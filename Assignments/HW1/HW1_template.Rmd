@@ -1,0 +1,63 @@
+---
+title: "GR5065 Homework 1"
+date: "Due January 26, 2021 at 8PM New York Time"
+author: "Your Name"
+output: 
+  pdf_document: 
+    latex_engine: xelatex
+    number_sections: yes
+---
+
+```{r, setup}
+# call the set.seed function once here to make the knitting conditionally deterministic
+```
+
+# Bowling
+
+This is an R chunk that will be executed so that `F` is available to call in subsequent R chunks
+and the output will be included in your knitted PDF document:
+```{r}
+# computes the x-th Fibonacci number without recursion and with vectorization
+F <- function(x) {
+  stopifnot(is.numeric(x), all(x == as.integer(x)))
+  sqrt_5 <- sqrt(5) # defined once, used twice
+  golden_ratio <- (1 + sqrt_5) / 2
+  return(round(golden_ratio ^ (x + 1) / sqrt_5))
+}
+```
+
+## R Implementation
+
+Make another R chunk here where you define the `Pr` function
+
+## Admissibility
+
+## Simulating a Game of Bowing
+
+### First Roll
+
+### Second Roll
+
+### Probability of a Frame
+
+### Game
+
+### Probability of a Game
+
+# Poker
+
+## Pot Odds
+
+## Probability of a Straight
+
+## First Mover Disadvantage
+
+## The Turn
+
+## Mike Postle's Fold
+
+## Statistical Considerations
+
+## The Phone
+
+## The Court Cases
