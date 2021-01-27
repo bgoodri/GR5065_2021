@@ -64,7 +64,7 @@ we can rewrite the variance of $X$ as
 $$\sigma^2 = \sum_{x\in\Omega}\left(x^2 - 2x\mu + \mu^2\right)\times\Pr\left(x\right) \\
 = \sum_{x\in\Omega}x^2 \times \Pr\left(x\right) - 2\mu\sum_{x\in\Omega}x\Pr\left(x\right) +
   \mu^2 \sum_{x\in\Omega} \Pr\left(x\right) \\
-= \mathbb{E}\left[X\right]^2 - 2\mu^2 + \mu^2 = \mathbb{E}\left[X\right]^2 - \mu^2$$
+= \mathbb{E}\left[X^2\right] - 2\mu^2 + \mu^2 = \mathbb{E}\left[X^2\right] - \mu^2$$
 - $\sigma = \sqrt[+]{\sigma^{2}}$ is the STANDARD DEVIATION of $X$
 
 ## Covariance and Correlation
