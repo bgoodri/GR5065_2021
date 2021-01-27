@@ -263,7 +263,10 @@ Mike Postle would only be trailing Marle Cordeiro if she had
   all that consistent with her betting, and neither is any two pair except perhaps
   a nine and an eight of the same suit (2 combinations since a nine and a eight
   of different suits have been turned over)
-* A few straights, but he already has a Queen and she would have folded with a 10 and a 7
+* A Jack with an Ace or a King (8 combinations, since he has \Jh), which are 
+  consistent with her betting and would give her the same pair but a higher kicker
+* A straight (12 combinations, since he has the \Qh \ and she would have folded with 
+  any 10 with a 7)
 
 In other words, although Mike Postle could have been trailing all along, he has
 every reason to _expect_ that he would win a lot of chips if he calls versus none

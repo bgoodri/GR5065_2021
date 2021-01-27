@@ -41,3 +41,5 @@ vignettes/*.pdf
 # Knitted files
 *.pdf
 *.html
+*.png
+*.log
