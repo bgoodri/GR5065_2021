@@ -1,0 +1,262 @@
+---
+title: Discrete Probability Distributions
+author: Ben Goodrich
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+autosize: true
+header-includes:
+   - \usepackage{amsmath}
+   - \usepackage{color}
+output:
+  ioslides_presentation:
+    widescreen: true
+editor_options: 
+  chunk_output_type: console
+---
+<style type="text/css">
+slides > slide:not(.nobackground):after {
+  content: '';
+}
+</style>
+
+```{r, setup, include = FALSE}
+options(width = 100)
+library(knitr)
+knit_hooks$set(small.mar = function(before, options, envir) {
+    if (before) par(mar = c(4, 4, .1, .1), las = 1)  # smaller margin on top and right
+})
+```
+
+## Logistics
+
+* The first homework will be graded soon on Canvas
+* Everyone needs to join the discussions on CampusWire
+* The next review session will be at 10AM Friday New York Time on CampusWire
+
+>- In the top right of RStudio, click on Project -> GR5065_2021, click on the blue
+  down arrow to pull, and then execute `setwd("Week03")` in the R console
+
+## Sampling without Replacement {.build}
+
+- The hypergeometric distribution corresponds to sampling WITHOUT replacement and
+  $\Pr\left(\left.x\right|m,n,k\right) = {{m \choose x}{n \choose k - x}} / {{m + n \choose k}}$ where
+  
+    - $m$ is the number of "good" elements in the set being drawn from
+    - $n$ is the number of "bad" elements in the set being drawn from
+    - $k$ is the number of times you draw without replacement
+    - ${a \choose b} = \frac{a!}{b!\left(a - b\right)!}$ is the choose function, 
+      which is defined as zero if $a < b$
+
+> - What is the probability of making three of a kind in Texas Hold'em poker?
+```{r, eval = FALSE}
+dhyper(x = 3, m = 4, n = 52 - 4, k = 2 + 5) * 13 # 0.07563025
+```
+> - In R, functions that compute probabilities start with `d` and end with
+  a suffix that abbreviates the name of the distribution. Functions that
+  start with `r` and have the same suffix draw from that distribution.
+
+## Variance
+
+- Let $g\left(X\right) = \left(X - \mu\right)^2$ for a discrete random variable, $X$,
+with expectation $\mu$:
+$$\mathbb{E}g\left(X\right) = \sum_{x\in\Omega}\left(x - \mu\right)^2\times\Pr\left(x\right) = \sigma^2 \geq 0$$
+is the VARIANCE of $X$ but the EXPECTATION of $g$. Since $\left(X-\mu\right)^{2} = X^2 - 2X\mu + \mu^2$, 
+we can rewrite the variance of $X$ as
+$$\sigma^2 = \sum_{x\in\Omega}\left(x^2 - 2x\mu + \mu^2\right)\times\Pr\left(x\right) \\
+= \sum_{x\in\Omega}x^2 \times \Pr\left(x\right) - 2\mu\sum_{x\in\Omega}x\Pr\left(x\right) +
+  \mu^2 \sum_{x\in\Omega} \Pr\left(x\right) \\
+= \mathbb{E}\left[X\right]^2 - 2\mu^2 + \mu^2 = \mathbb{E}\left[X\right]^2 - \mu^2$$
+- $\sigma = \sqrt[+]{\sigma^{2}}$ is the STANDARD DEVIATION of $X$
+
+## Covariance and Correlation
+
+- If $g\left(X,Y\right)=\left(X-\mu_X\right)\left(Y-\mu_Y\right)$, their COVARIANCE is 
+defined as
+$$\mathbb{E}g\left(X,Y\right) = 
+\sum_{x\in\Omega_X}\sum_{y\in\Omega_Y}\left(x - \mu_X\right)\left(y - \mu_Y\right)\Pr\left(x \bigcap y\right)
+= \mathbb{E}\left[XY\right] - \mu_X \mu_Y$$ 
+- If $g\left(X,Y\right)=\frac{X-\mu_X}{\sigma_X}\times\frac{Y-\mu_Y}{\sigma_Y}$, their
+CORRELATION is defined as
+$$\mathbb{E}g\left(X,Y\right) =
+\sum_{x\in\Omega_X}\sum_{y\in\Omega_Y}\frac{x - \mu_X}{\sigma_X}
+\frac{y - \mu_Y}{\sigma_Y}\Pr\left(x \bigcap y\right) =\\
+\frac{1}{\sigma_X \sigma_Y}
+\sum_{x\in\Omega_X}\sum_{y\in\Omega_Y}\left(x - \mu_X\right)\left(y - \mu_Y\right)
+\Pr\left(x \bigcap y\right) =
+\frac{\mathrm{Cov}\left(X,Y\right)}{\sigma_X \sigma_Y} = \rho$$
+- Covariance and correlation measure linear dependence (only). Is $\rho\gtreqqless0$ for 2 rolls in 
+the same frame of bowling?
+
+## Bernoulli Distribution
+
+> - The Bernoulli distribution over $\Omega=\left\{ 0,1\right\}$ depends on a
+  possibly unknown probability parameter $\pi \in \left[0,1\right]$ (not $3.14159\dots$)
+> - The probability that $x = 1$ ("success") is $\pi$ and the probability that 
+  $x = 0$ ("failure") is $1 - \pi$
+> - Can write as a Probability Mass Function (PMF) $\Pr\left(x \mid \pi\right)=\pi^{x}\left(1-\pi\right)^{1-x}$
+> - What is the expectation of $X$?
+> - What is the variance of $X$?
+> - You could write a model where $\pi$ is a function of predictors for each observation, 
+  as in $\pi\left(z\right) = \frac{1}{1+e^{-\alpha - \beta z}}$ for a logit model with predictor $z$
+  and then estimate the intercept, $\alpha$, and slope, $\beta$, using Bayes' Rule (in Week04)
+
+## Binomial Distribution
+
+> - A Binomial random variable can be defined as the sum of $n$
+INDEPENDENT Bernoulli random variables with the same $\pi$. What is $\Omega$ in this case?
+> - What is an expression for the expectation of a Binomial random variable?
+> - What is an expression for the variance of a Binomial random variable?
+> - What is an expression for $\Pr\left(x \mid \pi,n=3\right)$? Hint: 8 cases to consider
+    * All succeed, $\pi^3$ or all fail, $\left(1 - \pi\right)^3$
+    * 1 succeeds and 2 fail $\pi^1 \left(1-\pi\right)^{3 - 1}$
+      but there are 3 ways that could happen
+    * 2 succeed and 1 fails $\pi^2 \left(1-\pi\right)^{3 - 2}$
+      but there are 3 ways that could happen
+    * In general, $\Pr\left(x \mid n,\pi\right)={n \choose x}\pi^{x} \left(1-\pi\right)^{n-x} = 
+      \frac{n!}{\left(n - x\right)!x!} \pi^{x} \left(1-\pi\right)^{n-x}$
+
+## Back to Bowling
+
+> - Why is the binomial distribution with $n = 10$ inappropriate for the first roll of a frame of bowling?
+> - Could the Bernoulli distribution be used for success in getting a strike?
+> - Could the Bernoulli distribution be used for the probability of knocking over the frontmost pin?
+> - If $X_i = \mathbb{I}\{\mbox{pin i is knocked down}\}$ and $\pi_i$ is the
+  probability in the $i$-th Bernoulli distribution, what conceptually is
+$$\Pr\left(x_1 \mid \pi_1\right)\prod_{i=2}^{10}
+  \Pr\left(x_i \mid \pi_i,X_1=x_1,X_2=x_2,\dots,X_{i-1}=x_{i-1}\right)?$$
+
+## Poisson Distribution for Counts
+
+- Let $n\uparrow \infty$ and let $\pi \downarrow 0$ such that $\mu = n\pi$ remains fixed and finite. What is
+  the limit of the binomial PMF, $\Pr\left(x \mid n,\pi\right)={n \choose x}\pi^{x} \left(1-\pi\right)^{n-x}$?
+  
+    > - $\left(1-\pi\right)^{n-x} = \left(1-\frac{\mu}{n}\right)^{n-x} = 
+      \left(1-\frac{\mu}{n}\right)^n \times \left(1-\frac{\mu}{n}\right)^{-x} \rightarrow
+      e^{-\mu} \times 1$
+    > - ${n \choose x}\pi^{x} = \frac{n!}{x!\left(n - x\right)!} \frac{\mu^x}{n^x} = 
+      \frac{n \times \left(n - 1\right) \times \left(n - 2\right) \times \dots \times \left(n - x + 1\right)} 
+      {n^x} \frac{\mu^x}{x!} \rightarrow 1 \times \frac{\mu^x}{x!}$
+    > - Thus, the limiting PMF is $\Pr\left(x \mid \mu\right) = \frac{\mu^xe^{-\mu}}{x!}$, which is the 
+      PMF of the Poisson distribution over $\Omega = \{0,\mathbb{Z}_+\}$
+
+> - What is the variance of a Poisson random variable?
+
+## A Moment for Moments
+
+- $\mathbb{E}\left[X^k\right]$ is the $k$-th raw moment of $X$, where $k$ is a positive integer
+- If $k$ were a real number, $\mathbb{E}\left[X^k\right]$ is known as a fractional moment
+- $\mathbb{E}\left[\left(X - \mu\right)^k\right]$ is known as the $k$-th central moment of $X$
+- If $X$ is distributed Poisson with expectation $\mu = 1$, what is the value of $\mathbb{E}\left[X^0\right]$,
+  $\mathbb{E}\left[X^1\right]$, $\mathbb{E}\left[X^2\right]$, $\dots$?
+
+> - In general, if $X$ is distributed Poisson with expectation $\mu = 1$, then $\mathbb{E}\left[X^k\right]$
+  is known as the $k$-th Bell number, where $\mathcal{B}\left(0\right) = 1$ and for all $k \geq 0$
+  $$\mathcal{B}\left(k + 1\right) = \sum_{j = 0}^k {k \choose j} \mathcal{B}\left(j\right)$$
+
+## Parameterized Bowling {.build}
+
+- This is a bit artificial because parameters are usually continuous (see Week04)
+- Let $\Pr\left(x \mid n, \Upsilon\right) = \frac{{n + \Upsilon \choose x + \Upsilon} \mathcal{B}\left(x + \Upsilon\right)}
+  {\mathcal{B}\left(n + 1 + \Upsilon\right) - 
+  \sum_{i = 0}^{\Upsilon - 1} {n + \Upsilon \choose i} \mathcal{B}\left(i\right)}$ where
+  $\Upsilon \in \mathbb{N}_+$ is a parameter
+```{r, comment = ""}
+source("bowling.R") # creates the above Pr(x, n = 10, Upsilon = 0) and helper functions
+round(rbind(`3` = Pr(Omega, Upsilon = 3), `8` = Pr(Omega, Upsilon = 8)), digits = 5)
+colSums(vapply(1:48, FUN.VALUE = double(length(Omega)), FUN = Pr, x = Omega, n = 10))
+```
+
+> - If we had bowling data, how can we obtain the posterior probability of any $\Upsilon$?
+  
+## How to Think about $\Upsilon$
+
+```{r, Upsilon, echo = FALSE, cache = TRUE, small.mar = TRUE, fig.width=10, fig.height=5}
+SEQ <- 1:5000
+SEQ[209:218] <- NA_integer_
+plot(SEQ, sapply(SEQ, FUN = E), type = "l", log = "x", las = 1, 
+     ylab = expression(paste("Conditional expectation of first roll given", Upsilon)),
+     xlab = expression(paste(Upsilon, "(log scale)")), ylim = c(4,8.1), las = 2)
+segments(x0 = 6, y0 = 0, x1 = 6, y1 = E(6), col = 2, lty = 2)
+```
+
+## A Prior Distribution for $\Upsilon$ {.build}
+
+- Logarithmic distribution over $\Theta = \mathbb{N}_+$ depends on $p \in \left(0,1\right)$ and has PMF
+  $$\Pr\left(\Upsilon | p\right) = \frac{p^\Upsilon}{-\Upsilon \ln\left(1 - p\right)} \iff
+  \ln \Pr\left(\Upsilon | p\right) = \Upsilon \ln p - \ln\left(-\Upsilon \ln\left(1 - p\right)\right)$$
+- The expectation of $\Upsilon$ is
+  $\mathbb{E}\Upsilon = \frac{p}{\left(p - 1\right) \ln\left(1 - p\right)}$, so
+  choose $p$ to achieve a desired prior expectation for $\Upsilon$, such as $p = 0.946 \implies
+  \mathbb{E}\Upsilon \approx 6 \implies \mathbb{E}X_1 \approx 8$
+```{r}
+p <- 0.946; Upsilon <- 1:1000 # technically goes to infinity
+sum(p ^ Upsilon / (-Upsilon * log1p(-p))) # log1p(-p) is conceptually log(1 - p)
+sum(Upsilon * p ^ Upsilon / (-Upsilon * log1p(-p)))
+```
+
+## Joint Probability of $\Upsilon$ and $X_1$ {.smaller .build}
+
+- If you have a realization of the first roll of a frame of bowling,
+  what is $\Pr\left(\Upsilon \bigcap x_1  \mid p, n = 10\right)$?
+```{r, joint_Pr, cache = TRUE}
+joint_Pr <- matrix(NA, nrow = length(Upsilon), ncol = length(Omega), dimnames = list(Upsilon, Omega))
+for (y in Upsilon) joint_Pr[y, ] <- p ^ y / (-y * log1p(-p)) * Pr(Omega, n = 10, Upsilon = y)
+round(joint_Pr, digits = 6) # can View(joint_Pr) in RStudio to see more rows
+```
+
+## Marginal Probability of $X_1$ {.build}
+
+> - What is `sum(joint_Pr)`?
+```{r}
+round(sum(joint_Pr), digits = 6)
+```
+> - How do we obtain $\Pr\left(x_1 \mid p, n = 10\right)$ irrespective of $\Upsilon$?
+```{r}
+round(colSums(joint_Pr), digits = 5)
+```
+
+## What is $\Pr\left(\Upsilon \mid p, n = 10, x_1 = 7\right)$? {.build}
+```{r, small.mar = TRUE, fig.height=4.75, fig.width=10}
+barplot(joint_Pr[ , "7"] / sum(joint_Pr[ , "7"]), xlim = c(1, 37), ylim = c(0, .31), 
+        names.arg = Upsilon, xlab = expression(Upsilon), ylab = "Posterior Probability")
+```
+
+## Posterior Distribution Conditional on One Frame {.build}
+
+> - If $x_1 = 7$ and $x_2 = 2$, what is 
+  $\Pr\left(\Upsilon \mid p, n = 10, x_1 = 7, x_2 = 2\right)$?
+```{r, post, cache = TRUE, small.mar = TRUE, fig.height=3, fig.width=10}
+prior <- p ^ Upsilon / (-Upsilon * log1p(-p))
+likelihood <- vapply(Upsilon, FUN.VALUE = double(1), FUN = function(y)
+  return( Pr(x = 7, n = 10, Upsilon = y) * Pr(x = 2, n = 10 - 7, Upsilon = y) ) )
+numerator <- prior * likelihood
+denominator <- sum(numerator)
+barplot(height = numerator / denominator, xlim = c(1, 37), names.arg = Upsilon)
+```
+
+## Bayesian Learning {.build}
+
+> - If we use the posterior PMF, `joint_Pr[ , "7"] / sum(joint_Pr[ , "7"])`,
+  as a "prior" for the second roll, what is 
+  $\Pr\left(\Upsilon \mid p, n = 10 - 7, x_2 = 2\right)$?
+```{r, post2, cache = TRUE, small.mar = TRUE, fig.height=3, fig.width=10}
+prior <- joint_Pr[ , "7"] / sum(joint_Pr[ , "7"]) # same as Pr(Upsilon | p, n = 10, x_1 = 7)
+likelihood <- vapply(Upsilon, FUN.VALUE = double(1), FUN = Pr, x = 2, n = 10 - 7)
+numerator <- prior * likelihood
+denominator <- sum(numerator)
+barplot(height = numerator / denominator, xlim = c(1, 37), names.arg = Upsilon)
+```
+
+## Posterior Distribution Conditional on One Game {.build}
+
+```{r, game, cache = TRUE, small.mar = TRUE, fig.height=2.75, fig.width=10, warning = FALSE}
+frames <- rbind(
+  `1st` = c(7, 2), `2nd` = c(7, 1), `3rd` = c(10, 0), `4th` = c(5, 3),  `5th` = c(9, 1),
+  `6th` = c(6, 1), `7th` = c(8, 2), `8th` = c(4,  5), `9th` = c(7, 3), `10th` = c(8, 1) )
+log_prior <- Upsilon * log(p) - log(-Upsilon * log1p(-p)) # use logs for numerical reasons
+log_likelihood <- vapply(Upsilon, FUN.VALUE = double(1), FUN = function(y)
+  sum(log_Pr(x = frames[ , 1], n = 10, Upsilon = y), 
+      log_Pr(x = frames[ , 2], n = 10 - frames[ , 1], Upsilon = y)) )
+numerator <- exp(log_prior + log_likelihood) # convert back to probability units
+denominator <- sum(numerator, na.rm = TRUE)
+barplot(numerator / denominator, xlim = c(1, 37), ylim = c(0, .21), names.arg = Upsilon)
+```
