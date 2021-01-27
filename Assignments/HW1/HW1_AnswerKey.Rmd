@@ -1,0 +1,398 @@
+---
+title: "GR5065 Homework 1 Answer Key"
+date: "Due January 26, 2021 at 8PM New York Time"
+author: "Ben Goodrich"
+editor_options: 
+  chunk_output_type: console
+urlcolor: blue
+output: 
+  pdf_document: 
+    latex_engine: xelatex
+    number_sections: yes
+header-includes:
+   - \usepackage{amsmath}
+   - \usepackage{color}
+   - \usepackage{pst-poker}
+---
+
+```{r, setup}
+set.seed(20210126) # this makes the PRNG conditionally deterministic
+# but your numbers below will differ if you used a different seed
+```
+
+# Bowling
+
+```{r}
+# computes the x-th Fibonacci number without recursion and with vectorization
+F <- function(x) {
+  stopifnot(is.numeric(x), all(x == as.integer(x), na.rm = TRUE))
+  sqrt_5 <- sqrt(5) # defined once, used twice
+  golden_ratio <- (1 + sqrt_5) / 2
+  return(round(golden_ratio ^ (x + 1) / sqrt_5))
+}
+```
+
+## R Implementation
+
+```{r}
+Pr <- function(x, n = 10) ifelse(x > n, 0, F(x) ^ 2) / (F(n) * F(n + 1))
+```
+
+## Admissibility
+
+Since $\mathcal{F}\left(x\right) > 0$, the ratio that defines the probability
+function is always strictly positive. And since $x \leq n$, the ratio is always less than
+one. It is less obvious that the probabilities add up to one over the entire sample
+space, $\Omega$, but it is [true](https://en.wikipedia.org/wiki/Fibonacci_number#Combinatorial_identities),
+which can be seen in this case from
+```{r}
+Omega <- 0:10
+sum(Pr(Omega))
+```
+
+## Simulating a Game of Bowing
+
+### First Roll
+
+```{r}
+x_1 <- sample(Omega, size = 1, prob = Pr(Omega))
+```
+
+### Second Roll
+
+If $x_1 = 10$, then the second roll would not actually happen, but if it were to occur,
+then no more pins would be knocked down because there are no pins available on the
+second roll.
+
+```{r}
+x_2 <- sample(Omega, size = 1, prob = Pr(Omega, n = 10 - x_1))
+```
+
+### Probability of a Frame
+
+The probability of these (one or) two rolls happening in a frame is
+given by the General Multiplication Rule:
+```{r}
+Pr(x_1) * Pr(x_2, n = 10 - x_1)
+```
+
+### Game
+
+A sequence of pins being knocked down over an entire game of bowling is:
+```{r}
+pins <- matrix(NA_integer_, nrow = 12, ncol = 2) # tenth frame may have 2 additional rolls
+for (frame in 1:10) {
+  x_1 <- sample(Omega, size = 1, prob = Pr(Omega))
+  if (x_1 < 10) {
+    x_2 <- sample(Omega, size = 1, prob = Pr(Omega, n = 10 - x_1))
+    pins[frame, ] <- c(x_1, x_2)
+  } else pins[frame, 1] <- x_1
+}
+if (x_1 == 10) { # strike on 10th frame
+  x_1 <- sample(Omega, size = 1, prob = Pr(Omega))
+  if (x_1 < 10) {
+    x_2 <- sample(Omega, size = 1, prob = Pr(Omega, n = 10 - x_1))
+    pins[11, ] <- c(x_1, x_2)
+  } else {
+    x_2 <- sample(Omega, size = 1, prob = Pr(Omega))
+    pins[11:12, 1] <- c(x_1, x_2)
+  }
+} else if ( (x_1 + x_2) == 10 ) { # spare on 10th frame
+  pins[11, 1] <- sample(Omega, size = 1, prob = Pr(Omega))
+}
+```
+
+### Probability of a Game
+
+Assuming frames are independent of each other, the probability
+of this exact sequence of pins being knocked down is:
+```{r}
+prod(Pr(pins[ , 1], n = 10), 
+     Pr(pins[ , 2], n = 10 - pins[ , 1]), na.rm = TRUE)
+```
+
+This probability is quite small, as should be anticipated when
+multiplying many numbers between $0$ and $1$ together. In fact,
+the single most likely sequence of frames is all strikes (i.e. a perfect game)
+which has a probability of only `r Pr(10)^12` under this model. Nevertheless,
+all possible sequences of pins have probabilities that sum to $1$
+because we have used the General Multiplication Rule appropriately.
+
+# Poker
+
+Rick Schoenberg has a 
+[textbook](https://www.google.com/books/edition/Introduction_to_Probability_with_Texas_H/BZW_DQAAQBAJ?hl=en&gbpv=0), 
+an R [package](https://cran.r-project.org/package=holdem), and a
+semester-long [class](http://www.stat.ucla.edu/~frederic/100A/sum20/) at UCLA on
+learning probability using poker examples. Poker is the only example I can
+think of that utilizes all three conceptions of probability:
+
+1. Classical: The deck is discrete and finite and each card (remaining) in a shuffled
+  deck has the same probability of being revealed next
+2. Bayesian: Within a particular hand, the players essentially have a decision
+  theory problem where the conditional probability of winning the hand
+  given the visible cards, the betting, body language, past hands, etc. is governed 
+  by Bayes' Rule and is clearly subjective
+3. Frequentist: To evaluate a poker strategy or poker player, you really need to
+  consider the results over thousands of hands from shuffled deck
+
+But what does poker have to do with the QMSS? Poker is an example of an 
+incomplete information, non-cooperative, zero-sum game that 
+[motivated](https://timharford.com/2006/05/the-poker-machine/) 
+John von Neumann to develop game theory. In is interesting
+that social scientists often assume that _agents_ in a formal model act
+as if they were Bayesian but rarely do those social scientists _estimate_ the
+parameters of those models using Bayesian methods. In addition, 
+Maria Konnikova, who has a Ph.D. in psychology from Columbia, has
+written a [book](https://www-nature-com.ezproxy.cul.columbia.edu/articles/d41586-020-01840-5)
+on how learning to be a professional poker player affected her and
+how psychological limitations of individuals prevent them from playing poker
+optimally and from optimally doing other things in life.
+
+As professional social scientists, we want to look at social science
+the way professional poker players look at poker. In both cases,
+there are known and unknown quantities as well as models relating
+one to the other. We can use Bayes' Rule to obtain the conditional
+probability of what we don't know given what we do know and then
+use the probabilities to make the decision or take the action that has the
+highest expected utility. Frequentist and supervised learning approaches
+do not yield the probability of what we don't know given what they do know
+and thus do not provide a sound basis for making decisions or taking
+actions as a result of research.
+
+## Pot Odds
+
+Mike Postle needs to have slightly more than a one-in-three chance
+(specifically $\frac{125}{125 + 235} \approx 0.347$) to win the
+pot given that Marle Cordeiro has an above median hand. If Marle Cordeiro
+had a hand like a pair of Aces, Kings, or Queens, then the probability
+that Mike Postle would win with \Qd\Jh \ is much smaller than one-in-three
+(actually smaller than one-in-five) but that is only 
+$3 \times {4 \choose 2} = 18$ of the $\frac{{52 \choose 2}}{2} = 663$ above-median
+combinations that Marle Cordeiro could have. In addition, if Marle Cordeiro has a
+Queen with either an Ace or a King, that is not good for Mike Postle but that
+is only $2 \times 4^2 = 32$ combinations. Against the bulk of the above-median
+combinations that Marle Cordeiro could have, a \Qd\Jh \ will have a $0.4$ to $0.5$
+probability of winning so the marginal probability is well over $0.347$.
+
+## Probability of a Straight
+
+The flop must contain a Jack and two other cards that are adjacent to her
+\Qs\tend \ in order for Marle Cordeiro to make a straight. Since there are
+$4$ Jacks among the $50$ unobserved cards, the probability of a Jack is simply
+$\frac{4}{50} = 0.08$. Then, for example, the probability of getting a nine
+and an eight on the flop, given that a Jack is already turned over, is
+$\frac{4}{49} \times \frac{4}{48} \approx 0.0068$. But the probability of
+an Ace and a King, given that a Jack is already turned over is the same, 
+as is the probability of a King and a nine. Also, there are $3! = 6$ orders
+in which the three cards that complete Marle Cordeiro's straight on the
+flop can appear, so from Marle Cordeiro's perspective, the probability of
+making a straight on the flop given that she has \Qs\tend \ as hole cards is
+$$\frac{4}{50} \times 3 \frac{4}{49}\frac{4}{48} \times 3! \approx 0.0098$$
+
+## First Mover Disadvantage
+
+The first player's action can be used by the last player to update their
+beliefs about the first player's hole cards. Conversely, the first player
+cannot update their beliefs about the last player's hole cards at the time
+that the first player has to make a decision.
+
+As a result, in most cases where the small blind or the big blind is the first to act, 
+the Game Theory Optimal strategy is for them to check with _all_ combinations of hole 
+cards (that had not previously been folded) in order to prevent subsequent players
+from updating their beliefs.
+
+## The Turn
+
+If you answered the part about the probability of Marle Cordeiro is _dealt_ a
+combination of cards unconditionally or conditional on the four cards that were
+turned face-up in the middle, that is acceptable as long as your math corresponds to
+it. But I intended it to be answered before the flop but conditional on Mike Postle's
+hole cards.
+
+From Mike Postle's perspective, the probability that Marle Cordeiro is dealt a 4
+with a 9, 8, or Jack from a deck that is already lacking the \Qd \ and the \Jh \ is
+$\frac{4}{50} \times 3 \frac{4}{49} \times 2 \approx 0.04$. But if Marle Cordeiro had a 4 
+with a 9, 8, or Jack, that would be considerably worse than the median combination of 
+a Queen and a 8. Thus, the conditional probability that Marle Cordeiro raises to \$150 
+at her first opportunity given that she has a 4 with a 9, 8, or Jack is essentially zero.
+  
+From Mike Postle's perspective, the probability that Marle Cordeiro is dealt a pair of
+4s from a deck that is already lacking the \Qd \ and the \Jh \ is
+$\frac{4}{50} \times \frac{3}{49} \times 2 \approx 0.01$. And if Marle Cordeiro had a
+pair of 4s (or any other pair) that would be better than the median combination of a
+Queen and a 8, mostly due to the chance that if you then make three or four of a kind, 
+then you are likely to win a lot of chips. Thus, the conditional probability that Marle
+Cordeiro raises to \$150 at her first opportunity given that she has a pair of 4s is
+essentially one. According to Bayes' Rule, the posterior probability that Marle Cordeiro 
+has a pair of 4s given that she raised to \$150 at her first opportunity is
+$$\frac{\frac{4}{50} \times \frac{3}{49} \times 2 \times 1}{1/2} \approx 0.02$$
+where we have used the probability of being dealt a pair of 4s as the prior, a 
+conditional probability of raising of $1$, and a marginal probability of raising of
+$\frac{1}{2}$. In other words, the posterior probability that Marle Cordeiro has
+a pair of 4s is double the prior probability.
+  
+However, small pairs are likely to be among the 20\% of combinations of hole cards
+(that had not already been folded) where Marle Cordeiro would check after Mike Postle
+checks when the flop comes down as \nined\eigs\Jd, since a pair of 4s is probably
+trailing a bare majority of the hands that Mike Postle would not have already folded.
+If there is less than a 4-in-10 chance that Marle Cordeiro would raise \$200 on the
+turn given that she has a pair of 4s and a 8-in-10 chance that Marle Cordeiro would 
+raise \$200 on the turn marginally, then the conditional probability that she has
+a pair of 4s would be back below the 1-in-100 chance that she got dealt a pair of 4s.
+
+## Mike Postle's Fold
+
+Veronica Brill is puzzled, to put it mildly, why Mike Postle would fold after
+Marle Cordeiro bet \$200 on the turn. If the pot odds of $\frac{235}{125} = 1.88$ were 
+such that Mike Postle should call before the flop and the pot odds of $\frac{360}{200} = 1.8$
+where such that Mike Postle should call after the flop (both of which are justified),
+then why should Mike Postle _not_ call after the turn with a pot odds of 
+$\frac{760}{600} \approx 1.27$ when there is very little chance that the \fours \ vaulted 
+Marle Cordeiro into the lead with three of a kind against a pair of Jacks?
+
+Mike Postle would only be trailing Marle Cordeiro if she had
+
+* A pair of Aces (6 combinations), a pair of Kings (6 combinations), or a 
+  pair of Queens (3 combinations, since he has \Qd), which are consistent with her
+  betting and would give her a higher pair
+* A pair of 9s (3 combinations), a pair of 8s (3 combinations),
+  a pair of Jacks (1 combination, since he has \Jh), which are consistent with her
+  betting and would give her a three of a kind
+* A pair of 4s (3 combinations) would also give her three of a kind but is not that 
+  all that consistent with her betting, and neither is any two pair except perhaps
+  a nine and an eight of the same suit (2 combinations since a nine and a eight
+  of different suits have been turned over)
+* A few straights, but he already has a Queen and she would have folded with a 10 and a 7
+
+In other words, although Mike Postle could have been trailing all along, he has
+every reason to _expect_ that he would win a lot of chips if he calls versus none
+if he folds. Moreover, if Mike Postle regularly makes decisions that are as bad as
+this one, then he is very unlikely to make any money playing poker, much less a
+lot of money almost every time that he has played (on Stones Live) over the last several 
+months. Mike Postle's fold is rational only if he somehow has additional information
+--- beyond the cards in the middle and the betting history --- that Marle Cordeiro
+happens to have one of the few combinations of hole cards that is better than his
+\Qd\Jh \. Perhaps that additional information is a tell, but since it seems implausible
+that Mike Postle would be able to pick up on a tell of a professional poker in 
+such a short amount of time, the prospect that Mike Postle's additional information
+is illegal becomes more concerning.
+
+## Statistical Considerations
+
+This closely resembles the logic of Frequentist testing of a null hypothesis. In this
+case we have an empirical distribution of blue dots in a two-dimensional space where
+the players are presumably not cheating (if for no other reason that it is difficult
+to pull off) and are mostly independent of each other. These players tend to win or
+lose at most 100 big blinds per hundred hands. The question becomes should we reject
+the "null" hypothesis that the red and / or orange dots were generated by players
+that were playing fairly. In the case of the red dot, "potripper" managed to win
+at a much higher rate than a typical player while folding less than 1-in-10 hands.
+In other words, he was betting with much _worse_ hole cards than what most players
+bet with and was somehow winning five times more than the best players. Thus, it
+when he admitted to cheating, it was not much of a surprise. According to the
+plot, Mike Postle was somehow winning ten times more than the best players while
+folding at his first opportunity about half as often. Thus, almost all poker
+players that have seen this graph would reject a "null" hypothesis that Mike Postle
+was playing fairly, and it would make sense that Mike Postle would claim that the
+graph overstates how much he won since July 2018.
+
+## The Phone
+
+In contrast, the evidence from Mike Postle's phone is a good example of Bayesian
+updating. In general, we could write Bayes' Rule as
+$$\Pr\left(\mbox{cheating} \mid \mbox{evidence}\right) = 
+\frac{\Pr\left(\mbox{cheating}\right) \times \Pr\left(\mbox{evidence} \mid \mbox{cheating}\right)}
+{\Pr\left(\mbox{cheating}\right) \times \Pr\left(\mbox{evidence} \mid \mbox{cheating}\right) + 
+ \Pr\left(!\mbox{cheating}\right) \times \Pr\left(\mbox{evidence} \mid !\mbox{cheating}\right)}$$
+where the exclamation point reads as "not". Again, the prior probability that 
+Mike Postle (or anyone else) is cheating, $\Pr\left(\mbox{cheating}\right)$ is 
+presumably low if for no other reason that it is difficult to pull off.
+
+However, if Mike Postle were cheating by somehow seeing opponents' hole cards on
+his phone, then it would make sense that he would put his phone in a location
+where he could see it but no one else (and no cameras) could see it. Thus, the
+second term in the numerator of Bayes' Rule is close to one. Conversely, if Mike
+Postle were not cheating, then it seems unlikely that he would start putting
+his phone on his chair rather than on the table. Indeed, it seems that all 
+non-sketchy uses of a phone would be more difficult when his phone is in the chair.
+Thus, the second term in the denominator of Bayes' Rule is not very big and 
+the prior probability that Mike Postle is updated to something much closer
+to one as a result of this evidence. 
+
+Indeed, we could define a "smoking gun" as evidence where one term in the denominator 
+of Bayes Rule is close to zero and the other is close to one, in which case the posterior 
+probability would be close to one for any non-dogmatic prior. Placing the
+phone on the chair, by itself, is perhaps not quite a smoking gun since Mike Postle
+has claimed that he was looking at private pictures that were sent to him,
+which is one of the few other reasons he would obscure his phone. Conversely,
+Stones claimed to have conducted a thorough investigation and found no evidence
+that Mike Postle cheated, which did not result in poker players updating their
+beliefs very much. If Mike Postle were cheating, it would make sense that 
+Stones would proclaim that it had not found such evidence, because if there
+were evidence it would have presumably implicated a Stones' employee in which
+case Stones would be liable and quite possibly shut down by the state of California.
+
+Similarly, if Mike Postle were cheating by intercepting the RFID information
+produced by the table, then it would make sense for him to have some software
+on his phone that was similar to the software the production room at Stones
+uses to read the cards and merge their images into the video stream. Conversely,
+if if Mike Postle were not cheating, why would he be looking at a blue but
+otherwise blank screen on his phone? He is not getting status updates on Facebook
+or ordering an Uber or using any other recognizable app. Indeed, why would
+there be an app that shows nothing but a blue screen and if there were such an
+app, why would anyone download or use it? 
+
+Finally, if Mike Postle were cheating by intercepting the RFID information
+produced by the table, then he would know whether the table had malfunctioned
+on a hand where it was not reading all of the hole cards. Conversely, if Mike
+Postle were not intercepting the RFID information, then he would not know that
+the table had malfunctioned on a hand. Thus, if indeed he asked a Stones' 
+employee about a hand where the table malfunction by not reading all the hole
+cards, that would be close to a smoking gun.
+
+## The Court Cases
+
+This seems like a thorny issue, albeit one that recently came up again when
+Dominion, which makes voting machines, sued Rudy Giuliani for claiming that
+their voting machines were rigged against Donald Trump. On one hand, it would not 
+make sense to punish people for saying things they believed to be true (even if they 
+were false), and Bayesians feel that beliefs should be updated according to Bayes' Rule.
+However, any Bayesian defendant could claim something like "My prior was
+such that the plaintiff was defrauding people, and thus it was rational
+for me to believe so, even though the evidence was not strong." In addition,
+that prior could be based on prejudice or past experience being defrauded
+by people _other_ than the plaintiff, which the legal system would not want
+to be a factor in deciding the case at hand.
+
+Similarly, Bayesian defendants might not be that sure what they are saying
+is true, but their utility functions could be such that it is rational for
+them to act as if it were true. Indeed, Veronica Brill's original thread
+about Mike Postle included this [tweet](https://twitter.com/Angry_Polak/status/1178014856793845762):
+
+> Am I sure that this player is cheating? No. Do I think that there is a greater 
+than zero \% chance that he is? Yes.
+
+If Veronica Brill's utility function is such that she does not want
+herself or other people to continue to lose money to someone who is not
+playing fairly, then it would make sense to raise these concerns about
+Mike Postle for some sufficiently high posterior probability that he is
+cheating. But the utility function, like the prior distribution, is personal
+and the legal system is ostensibly impersonal.
+
+Even in criminal cases more broadly, having Bayesian jurors would raise
+issues. Judges do not want jurors to condition on _all_ the information
+they might have; only the evidence that is (admissibly) presented during
+the trial. Prosecutors tend to win at least 90\% of cases that go to 
+trial, so (assuming no prosecutorial misconduct) a Bayesian juror might
+well have a prior that the defendant is guilty with probability $0.9$
+before any evidence is presented, although a judge would dismiss a 
+juror that admitted to having such a prior.
+
+All that said, the Frequentist perspective on probability does not
+seem adequate for legal proceedings either. It is irrelevant if the
+legal system only convicts 5\% of innocent defendants (or has
+some other known Type I error rate). Jurors have to decide whether 
+_this_ particular defendant is guilty when nothing is randomized,
+and all of the uncertainty is due to incomplete information rather
+than a finite $N$.
