@@ -1,0 +1,102 @@
+---
+title: "GR5065 Homework 2"
+date: "Due February 9, 2021 at 8PM New York Time"
+author: "Your Name"
+output: 
+  pdf_document: 
+    latex_engine: xelatex
+    number_sections: yes
+urlcolor: blue
+---
+
+```{r, setup}
+# call the set.seed function once here to make the knitting conditionally deterministic
+```
+
+# Equilibrium Climate Sensitivity
+
+## Drawing from the prior
+
+## Truncating the prior
+
+## Describing the truncated prior
+
+## PDF of a Ratio of Normals
+
+```{r}
+dratio <- function(z, mu_X = -3.7, mu_Y = -1.6, 
+                   sigma_X = 0.2 * 3.7, sigma_Y = 0.5 * 1.6) {
+  # implement
+}
+```
+
+## Describing the truncated prior, part II
+
+
+## The likelihood function components
+
+```{r}
+e <- c(Low_ii = .25, Low_iii = .35, Low_iv = .2, High_i = .75, High_ii = .65, High_iii = 0.6)
+c <- c(Low_ii = 1.5, Low_iii = 1.5, Low_iv =  2, High_i = 4.0, High_ii = 4.5, High_iii = 4.5)
+```
+```{r}
+likelihood <- function(chi, e_j, c_j) {
+  # implement
+}
+```
+
+## Posterior PDF
+
+```{r}
+numerator <- function(chi, e = e, c = c) {
+  # implement
+}
+```
+
+# Darts
+
+```{r}
+darts::drawBoard(new = TRUE)
+```
+
+## Drawing from a bivariate normal distribution
+
+## Normal Prior Distributions
+
+# Scoring Function
+
+```{r}
+score <- function(x, y) {
+  stopifnot(is.numeric(x), length(x) == 1, is.numeric(y), length(y) == 1)
+  
+  # convert x and y in Cartesian coordinates to a radius and angle in polar coordinates
+  # https://en.wikipedia.org/wiki/Polar_coordinate_system
+  radius <- sqrt(x ^ 2 + y ^ 2)
+  angle  <- atan2(y, x)
+  
+  if (radius > 170)   return(0)  # misses dartboard
+  if (radius <= 6.35) return(50) # double bullseye
+  if (radius <= 15.9) return(25) # single bullseye
+  
+  margin <- pi / 20
+  interval <- margin * 2
+  small <- pi / 2 - margin - 0:19 * interval
+  large <- pi / 2 + margin - 0:19 * interval
+  bed <- which(angle > small & angle <= large)
+  if (length(bed) == 0) {
+    angle <- angle - 2 * pi
+    bed <- which(angle > small & angle <= large)
+  }
+  S <- darts:::getConstants()$S  # 20, 1, ..., 5
+  score <- S[bed]
+  if (dplyr::between(radius, 99, 107))       score <- 3 * score # in triple ring
+  else if (dplyr::between(radius, 162, 170)) score <- 2 * score # in double ring
+  return(score)
+}
+```
+
+## Estimating the parameters
+
+## Expected scores
+
+
