@@ -1,0 +1,496 @@
+---
+title: "Bayesian Principles"
+author: Ben Goodrich
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+autosize: true
+header-includes:
+   - \usepackage{amsmath}
+   - \usepackage{amssymb}
+   - \usepackage{color}
+output:
+  ioslides_presentation:
+    widescreen: yes
+    highlight: pygment
+editor_options: 
+  chunk_output_type: console
+---
+<style type="text/css">
+slides > slide:not(.nobackground):after {
+  content: '';
+}
+</style>
+
+```{r setup, include=FALSE}
+options(width = 90, scipen = 1)
+library(knitr)
+opts_chunk$set(echo = TRUE)
+knit_hooks$set(small.mar = function(before, options, envir) {
+    if (before) par(mar = c(4, 4, .1, .1), las = 1)  # smaller margin on top and right
+})
+```
+
+## Syllabus Change
+
+* Use the new version of the [syllabus](https://courseworks2.columbia.edu/courses/125406/assignments/syllabus) 
+  on Canvas
+* We are now going to do Directed Acyclic Graphs next week and do (Hamiltonian) Markov Chain Monte Carlo
+  the week afterward
+* The Elwert reading for next week is dense but good. Focus on the first $\frac{2}{3}$, although there
+  are some good examples toward the end.
+
+> - Open the GR5065_2021 project, pull from GitHub, and call `setwd("Week05")` in the RStudio Console
+
+## _Ex Ante_ Probability (Density) of _Ex Post_ Data
+
+A likelihood function is the same expression as a P{D,M}F with 3 distinctions:
+
+1. For the PDF or PMF, $f\left(\left.x\right|\boldsymbol{\theta}\right)$, we think of $X$ as a random variable 
+  and $\boldsymbol{\theta}$ as given, whereas we conceive of the likelihood function, 
+  $\mathcal{L}\left(\boldsymbol{\theta};x\right)$, to be a function of $\boldsymbol{\theta}$ 
+  (in the mathematical sense) evaluted at the OBSERVED data, $x$
+    - As a consequence, $\int\limits _{-\infty}^{\infty}f\left(\left.x\right|\boldsymbol{\theta}\right)dx=1$ or
+$\sum\limits _{x \in\Omega}f\left(\left.x\right|\boldsymbol{\theta}\right)=1$ while 
+$\int_{-\infty}^{\infty}\int_{-\infty}^{\infty}\cdots\int_{-\infty}^{\infty}
+\mathcal{L}\left(\boldsymbol{\theta};x\right)d\theta_{1}d\theta_{2}\ldots d\theta_{K}$ may not exist and is 
+never 1
+2. We often think of “the likelihood function” for $N$ conditionally independent observations, 
+so $\mathcal{L}\left(\boldsymbol{\theta};\mathbf{x}\right)=\prod _{n=1}^{N}\mathcal{L}\left(\boldsymbol{\theta};x_n\right)$
+3. By “the likelihood function”, we often really mean the natural logrithm thereof, a.k.a. the log-likelihood function $\ell\left(\boldsymbol{\theta};\mathbf{x}\right) = \ln\mathcal{L}\left(\boldsymbol{\theta},\mathbf{x}\right)=\sum_{n=1}^{N}
+\ln\mathcal{L}\left(\boldsymbol{\theta};x_n\right)$
+
+## Beta Distribution
+
+- Two (among several) ways to construct a continuous probability distribution:
+
+    1. Take any increasing function from $\Omega$ to $\left[0,1\right]$. This will be a CDF,
+      $F\left(x \mid \boldsymbol{\theta}\right)$ and you can differentiate the CDF to get the PDF, 
+      $f\left(x \mid \boldsymbol{\theta}\right)$.
+    2. Take any kernel function, $k\left(x\right)$, from $\Omega$ to $\mathbb{R}_+$ &
+      set $f\left(x \mid \boldsymbol{\theta}\right) = \frac{k\left(x\right)}{\int_\Omega k\left(x\right) dx}$
+      
+> - Example of (2) is the Beta distribution, but its PDF is not elementary unless
+  $a$ and $b$ are integers.
+  $X \in \Omega = \left[0,1\right]$ and 
+  $k\left(x \mid a, b\right) = x^{a - 1} \left(1 - x\right)^{b - 1} > 0$, so
+  $B\left(a,b\right) = \int_0^1 k\left(x \mid a,b\right) dx \implies
+  f\left(x \mid a,b\right) = \frac{1}{B\left(a,b\right)} x^{a - 1} \left(1 - x\right)^{b - 1}$
+
+> - The two shape parameters to the Beta distribution must be positive. If $a = 1 = b$, 
+  $f\left(x \mid a = 1 = b\right) = 1$, which is the standard uniform PDF.
+  
+> - If $a,b < 1$, $f\left(x \mid a,b\right)$ is $\bigcup$-shaped.
+And if $a,b > 1$, $f\left(x \mid a,b\right)$ is $\bigcap$-shaped.
+    If $a > 1$ and $b < 1$, $f\left(x \mid a,b\right)$ is $J$-shaped.
+    $\mathbb{E}X = a / \left(a + b\right)$.
+
+## Biontech / Pfizer [Analysis](http://skranz.github.io//r/2020/11/11/CovidVaccineBayesian.html?utm_source=feedburner&utm_medium=feed&utm_campaign=Feed%3A+skranz_R+%28Economics+and+R+%28R+Posts%29%29) of its mRNA Vaccine {.build}
+
+- Let $\pi_v$ be the probability of getting covid given that someone is vaccinated (in the Fall of 2020), 
+  $\pi_c$ be the probability of getting covid given that someone is not vaccinated, 
+  $\theta = \frac{\pi_v}{\pi_v + \pi_c}$,
+  and the "Vaccine Effect" is $\mbox{VE}\left(\theta\right) = \frac{1 - 2\theta}{1 - \theta}$
+- Prior for $\theta$ was Beta with $a = 0.700102$ and $b = 1$, which was chosen so that the VE at 
+  $\mathbb{E}\theta$ was $\approx 0.3$ (which is necessary for emergency FDA approval)
+```{r}
+a <- 0.700102; b <- 1; (VE <- (1 - 2 * a / (a + b)) / (1 - a / (a + b)))
+```
+
+> - This was dubious because 
+$\mathbb{E}\mbox{VE}\left(\theta\right) \neq \mbox{VE}\left(\mathbb{E}\theta\right)$.
+  The prior $\mathbb{E}\mbox{VE}\left(\theta\right) \approx$
+```{r}
+theta_ <- rbeta(10^7, shape1 = a, shape2 = b); mean( (1 - 2 * theta_) / (1 - theta_) )
+```
+
+
+## Deriving the Posterior Distribution Analytically
+
+- $\Pr\left(y \mid \theta, n\right) = {n \choose y} \theta^y \left(1 - \theta\right)^{n - y}$ is binomial
+  where "success" is getting covid when vaccinated and "failure" is getting covid when not vaccinated
+- $y = 8$ vaccinated people and $n - y = 86$ non-vaccinated people got covid
+
+> - What are their beliefs about $\theta$? ($\propto$ means "proportional to", i.e. the kernel)
+$$f\left(\theta \mid a,b,n,y\right) = \frac{f\left(\theta \mid a,b\right) L\left(\theta;n,y\right)}
+{\int_0^1 f\left(\theta \mid a,b\right) L\left(\theta;n,y\right) d\theta} \propto \\
+\theta^{a - 1} \left(1 - \theta\right)^{b - 1} \theta^{y}\left(1-\theta\right)^{n-y}
+= \theta^{a + y - 1} \left(1 - \theta\right)^{b + n - y - 1} = \theta^{a^\ast - 1} \left(1 - \theta\right)^{b^\ast - 1}$$
+where $a^{\ast}=a+y = 8.700102$ and $b^{\ast}=b+n-y = 87$
+> - $f\left(\theta \mid a^\ast,b^\ast\right)$ has the kernel of a Beta PDF and therefore 
+its normalizing constant must be the reciprocal of $B\left(a^\ast,b^\ast\right) = 
+\int_0^1 \theta^{a^\ast - 1} \left(1 - \theta\right)^{b^\ast - 1} d\theta$
+
+## Posterior Distribution of $\mbox{VE}\left(\theta\right)$
+
+```{r, small.mar = TRUE, fig.width=10, fig.height=4}
+y <- 8; n <- 94
+theta <- sort(rbeta(n = 10^7, shape1 = a + y, shape2 = b + n - y), decreasing = TRUE)
+VE <- (1 - 2 * theta) / (1 - theta)
+plot(VE, 1:10^7 / 10^7, type = "l", xlim = c(0.3, 1), ylab = "Simulated Posterior CDF")
+```
+
+## Properties of the Posterior Distribution of $\theta$
+
+- Posterior expectation is between the prior expectation and sample mean
+```{r}
+y <- 8; n <- 94 
+c(prior_mu = a / (a + b), posterior_mu = (a + y) / (a + y + b + n - y), avg = y / n)
+```
+- As $n \uparrow \infty$ with $a$ and $b$ fixed, the posterior mean approaches 
+  $\overline{y} = \frac{y}{n}$ and the posterior variance, 
+  $\frac{\left(a + y\right) \left(b + n - y\right)}{\left(a + b + n\right)^2\left(a + b + n + 1\right)}$,
+  approaches zero
+- Can easily use an intermediate posterior PDF as your next prior PDF
+- Also facilitates early stopping in adaptive experimental designs
+
+## Posterior Predictive Distribution
+
+1. Draw $\widetilde{\theta}$ from its posterior distribution, given the data
+2. Draw $\widetilde{y}$ from its conditional distribution given that
+  realization of $\widetilde{\theta}$
+3. Store the realization of $\widetilde{y}$
+
+- Repeating $S$ times yields draws of a future $\widetilde{y}$ whose PDF marginalizes over $\theta$
+
+$$f\left(\widetilde{y} \mid y, \dots \right) = 
+  \int_{-\infty}^\infty f\left(\widetilde{y} \mid \theta\right) f\left(\theta \mid y, \dots\right) d\theta =
+  \int_{-\infty}^\infty f\left(\widetilde{y}, \theta \mid y, \dots\right) d\theta$$
+  
+> - If posterior is Beta with shape $a^\ast = a + y$ and $b^\ast = b + n - y$, this integral can be 
+  ["solved"](https://en.wikipedia.org/wiki/Beta-binomial_distribution#As_a_compound_distribution) 
+  (albeit with special functions) to yield the beta-binomial PMF:
+$$f\left(\widetilde{y} \mid y, n, a, b\right) =
+ {n \choose \widetilde{y}}\frac{B\left(\widetilde{y} + a^\ast, n - \widetilde{y} + b^\ast\right)}
+ {B\left(a^\ast, b^\ast\right)}$$
+
+## Matching a Prior Predictive Distribution
+
+- The prior predictive distribution, which is the marginal distribution of
+  future data integrated over the parameters, can be drawn from by
+
+    1. Draw $\widetilde{\theta}$ from its prior distribution
+    2. Draw $\widetilde{y}$ from its conditional distribution given that
+      realization of $\widetilde{\theta}$
+    3. Store the realization of $\widetilde{y}$
+
+> - Excellent way to judge whether your prior on $\theta$ is reasonable
+  is to check whether the distribution of $\widetilde{y}$ is reasonable
+    
+> - When the outcome is a small-ish count, a good algorithm to draw $S$
+  times from the POSTERIOR distribution is to keep the realization
+  of $\widetilde{\theta}$ if and only if the realization of
+  $\widetilde{y}$ exactly matches the observed $y$. The proportion of
+  draws kept approximates the denominator of Bayes' Rule (for discrete $Y$).
+
+## Estimation Via Prior Predictive Matching {.build}
+
+```{r}
+S <- 4000; theta <- rep(NA, S); s <- 1; tries <- 0
+while (s <= S) {
+  theta_ <- rbeta(n = 1, shape1 = a, shape2 = b) # draw from prior (not necessarily beta)
+  y_ <- rbinom(1, size = n, prob = theta_) # draw outcome conditional on theta_
+  if (y_ == y) { # check condition implied by observed outcome
+    theta[s] <- theta_
+    s <- s + 1
+  } # otherwise do nothing
+  tries <- tries + 1
+}
+length(theta) / tries # (estimated) denominator of Bayes Rule
+summary( (1 - 2 * theta) / (1 - theta) ) # posterior summary of implied VE = g(theta)
+```
+
+## Quantity of Interest for Bayesians & Frequentists
+
+> - Bayesians are ultimately interested in (estimating) expectations of the form
+  $$\mathbb{E}_{\left.\boldsymbol{\theta}\right|y_1 \dots y_N}g\left(\boldsymbol{\theta}\right) = 
+  \int_{-\infty}^\infty \dots \int_{-\infty}^\infty g\left(\boldsymbol{\theta}\right) f\left(\left.\boldsymbol{\theta}\right|y_1 \dots y_N\right)
+  d\theta_1 \dots d\theta_K$$
+  where $g\left(\boldsymbol{\theta}\right)$ is some function of the unknown parameters, such as utility, 
+  and $f\left(\left.\boldsymbol{\theta}\right|y_1 \dots y_N\right)$ is a posterior PDF for
+  unknown parameters given $y_1 \dots y_N$
+> - Frequentists are ultimately interested in (evaluating) expectations of the form
+  $$\mathbb{E}_{\left.Y\right|\boldsymbol{\theta}}h\left(y_1 \dots y_N\right) = 
+  \int_{-\infty}^\infty \dots \int_{-\infty}^\infty h\left(y_1 \dots y_N\right) f\left(\left.y_1 \dots y_N\right|\boldsymbol{\theta}\right)
+  dy_1 \dots dy_N$$
+  where $h\left(y_1 \dots y_N\right)$ is a function of data, such as a point or interval estimator
+  of $\boldsymbol{\theta}$ and $f\left(\left.y_1 \dots y_N\right|\boldsymbol{\theta}\right)$ is a PDF for
+  the data-generating process given $\boldsymbol{\theta}$
+
+## Tips to Avoid Being Confused by Frequentism
+
+> - What is the nature and timing of the randomization? (Often non-existent)
+> - Probability looks forward from the instant before the randomization
+   and conditions on everything previous, including $\boldsymbol{\theta}$,
+   which is weird
+> - Only make probability statements about random variables, such as
+  data, estimators, and test statistics. Do not make probability statements 
+  about constants you conditioned on, such as $\boldsymbol{\theta}$, hypotheses, 
+  and research designs.
+> - Instead of saying "the probability of $A$", say "the proportion
+  of times that $A$ would happen over the (hypothetical) randomizations of $\dots$ "
+> - Instead of saying some estimator is consistent, unbiased, efficient, etc.,
+  insert the definitions. E.g., "The average of $\widehat{\theta}$
+  across random sampled datasets of fixed size $N$ is $\theta$ (unbiased)" or
+  "As $N \uparrow \infty$, the average squared difference between $\theta$
+  and $\widehat{\theta}$ across random sampled datasets diminishes (consistent)".
+> - Frequentist methods deliberately do not produce a distribution of beliefs
+
+## Four Ways to Execute Bayes Rule
+
+1. Analytically integrate the kernel of Bayes Rule over the parameter(s)
+
+    *  Makes incremental Bayesian learning obvious but is only possible in 
+    simple models when the distribution of the outcome is in the exponential family
+
+2. Numerically integrate the kernel of Bayes Rule over the parameter(s)
+
+    *  Most similar to what we did in the discrete case but is only feasible when 
+    there are few parameters and can be inaccurate even with only one
+
+3.  Draw from the prior predictive distribution and keep realizations of 
+  the parameters iff the realization of the outcome matches the observed data
+  
+    *  Very intuitive what is happening but is only possible with discrete outcomes 
+    and only feasible with few observations and parameters
+
+4. Perform MCMC (via Stan) to sample from the posterior distribution
+
+    *  Works for any posterior PDF that is differentiable w.r.t. the parameters
+
+## Principles to Choose Priors With
+
+1. Do not use improper priors (those that do not integrate to $1$)
+2. Subjective (possibly by inverse CDFs), including "weakly informative" priors
+3. Entropy Maximization
+4. Invariance to reparameterization (particularly scaling)
+5. "Objective" (actually also subjective, but different from 2)
+6. Penalized Complexity (PC) (which we will cover the last week of the semester)
+
+
+> - A subjective prior can be (and historically was) done via conventional probability 
+  distributions that have elementary kernel functions and closed-form expectations,
+  but it is better (but has not been) to do them via probability distributions with 
+  elementary inverse CDFs
+
+## Generalized Lambda Distribution (GLD)
+
+GLD lacks an explicit PDF & CDF so it is
+[defined](https://mpra.ub.uni-muenchen.de/43333/3/MPRA_paper_43333.pdf)
+by its inverse CDF from $p$ to $\Omega$:
+$$F^{-1}\left(p \mid m, r, a, s\right) = 
+m + r \times F^{-1}\left(p \mid m = 0, r = 1, a, s\right) \\
+F^{-1}\left(p \mid m = 0, r = 1, a, s\right) = 
+\frac{S\left(p; a, s\right) - S\left(0.5; a, s\right)}
+{S\left(0.75; a, s\right) - S\left(0.25; a, s\right)} \\
+S\left(p; a, s\right) = \frac{p^{\alpha + \beta} - 1}{\alpha + \beta} - 
+\frac{\left(1 - p\right)^{\alpha - \beta} - 1}{\alpha - \beta},
+\alpha = \frac{0.5 - s}{2\sqrt{s\left(1 - s\right)}},
+\beta = \frac{a}{2\sqrt{1 - a^2}}$$
+
+- $m$ is the median
+- $r > 0$ is the interquartile range, i.e. the difference between the quartiles
+- $a \in \left(-1,1\right)$ controls the asymmetry (if symmetric, then $a = 0$)
+- $s \in \left(0,1\right)$ controls the steepness (i.e. the heaviness) of its tails
+- Limits are needed to evaluate $S\left(p; a,s\right)$ as $2s \rightarrow 1 \pm a$
+
+## Special Cases of the GLD (for some $m$ and $r$)
+
+```{r, echo = FALSE, fig.width=11, fig.height=5.5, fig.keep = c(1, 3, 5, 7, 9, 11, 13, 19, seq(22, 36, by = 2))}
+new_slide = function(title = "Special Cases of the GLD (for some $m$ and $r$)") {
+  knitr::asis_output(paste0("\n\n## ", title, "\n\n"))
+}
+par(mar = c(4, 4, .1, .1), las = 1, bg = "lightgrey")
+plot(c(-1, 1), c(0,1), type = "n", las = 1, xlab = "Asymmetry (a)", ylab = "Steepness (s)")
+new_slide()
+polygon(x = c(-1, 0, 1), y = c(1, 1/2, 1), col = 2, border = 2)
+text(x = 0, y = 1.02, labels = "Unbounded", col = 2)
+new_slide()
+polygon(x = c( 1,  1, 0), y = c(1, 0, 1 / 2), col = 5, border = 5)
+text(x =  1.02, y = 1 / 2, labels = "Lower Bounded", col = 5, srt = 270)
+new_slide()
+polygon(x = c(-1, -1, 0), y = c(1, 0, 1 / 2), col = 4, border = 4)
+text(x = -1.02, y = 1 / 2, labels = "Upper Bounded", col = 4, srt = 90)
+new_slide()
+polygon(x = c(-1, 0, 1), y = c(0, 1/2, 0), col = 3, border = 3)
+text(x = 0, y = -0.02, labels = "Bounded on Both Sides", col = 3)
+new_slide()
+points(x = 0, y = 1 / 2, pch = 20)
+text(x = 0, y = 1/2, labels = 'Logistic(0,1)', pos = 4)
+new_slide()
+points(x = 1, y = 0, pch = 20)
+text(x = 1, y = -0.02, labels = 'Exponential(1)', pos = 4, srt = 90)
+new_slide()
+points(x = 0.412, y = 0.3, pch = 20)
+text(x = 0.412, y = 0.3, labels = '"Gamma"(4,1)', pos = 4)
+points(x = 0.6671, y = 0.1991, pch = 20)
+text(x = 0.6671, y = 0.1991, labels = expression(paste('"', chi^2, '"(3)')), pos = 4)
+points(x = 0.2844, y = 0.358, pch = 20)
+text(x = 0.2844, y = 0.358, labels = '"Lognormal"(0,0.25)', pos = 4)
+new_slide()
+points(x = 0, y = 1 / 2 - 1 / sqrt(5), pch = 20)
+points(x = 0, y = 1 / 2 - 2 / sqrt(17), pch = 20)
+text(x = 0, y = 1 / 2 - 1 / sqrt(5), pos = 1, labels = 'Uniform(0,1)', offset = 1 / 5)
+new_slide()
+points(x = 0, y = 0.3661, pch = 20)
+text(x = 0, y = 0.3661, labels = '"Normal"(0,1)', pos = 1)
+new_slide()
+points(x = 0, y = 0.647, pch = 20)
+text(x = 0, y = 0.647, labels = '"Laplace"(0,1)', pos = 1)
+new_slide()
+points(x = 0, y = 0.9434, pch = 20)
+text(x = 0, y = 0.9434, labels = '"Cauchy"(0,1)', pos = 3)
+new_slide()
+s <- function(a, k) {
+H <- function(x) ifelse(x >= 0, 1, -1)
+  1 / 2 - H(abs(a) - sqrt(4 / (4 + k^2))) * 
+          sqrt( (1 - 2 * k * abs(1 / 2 * a / sqrt(1 - a^2)) + k^2 * (1 / 2 * a / sqrt(1 - a^2))^2) / 
+                (4 - 8 * k * abs(1 / 2 * a / sqrt(1 - a^2)) + k^2 + 4 *  k^2 * (1 / 2 * a / sqrt(1 - a^2))^2) )
+}
+for (k in 1:4) {
+  curve(s(a, k),from = -1, to = 1, xname = "a", add = TRUE, lty = 2, col = "gold")
+  text(-0.5, s(0.5, k), labels = paste("k = ", k), col = "gold", pos = 1, offset = 2 / k)
+  new_slide()
+}
+text(c(-0.46, -0.5), y = c(.425, .2), 
+     labels = c("finite moments", "All moments finite"), col = "gold", pos = c(4,1))
+```
+
+## Using a GLD Prior for Vaccine Effectiveness
+
+```{r, small.mar = TRUE, warning = FALSE, fig.show="hide"}
+source("GLD_helpers.R") # defines GLD_solver_bounded() and related functions
+(a_s <- GLD_solver_bounded(bounds = 0:1, median = 0.3, IQR = 0.4)) # note warning
+curve(qgld(p, median = 0.3, IQR = 0.4, asymmetry = a_s[1], steepness = a_s[2]), n = 10001,
+      from = 0, to = 1, xname = "p", xlab = "Cumulative Probability",
+      ylab = "Prior Vaccine Effectiveness", axes = FALSE)
+p <- c(0, 0.25, 0.5, 0.75, 1)
+(VE <- qgld(p, median = 0.3, IQR = 0.4, asymmetry = a_s[1], steepness = a_s[2]))
+axis(1, at = p)
+axis(2, at = round(VE, digits = 3))
+points(x = p, y = VE, pch = 20, col = "red")
+```
+
+## Plot from Previous Slide
+
+```{r, small.mar = TRUE, echo = FALSE, fig.width=11, fig.height=5}
+curve(qgld(p, median = 0.3, IQR = 0.4, asymmetry = a_s[1], steepness = a_s[2]), n = 10001,
+      from = 0, to = 1, xname = "p", xlab = "Cumulative Probability",
+      ylab = "Prior Vaccine Effectiveness", axes = FALSE)
+axis(1, at = p)
+axis(2, at = round(VE, digits = 3))
+points(x = p, y = VE, pch = 20, col = "red")
+```
+
+## Prior Predictive Matching with a GLD Prior on VE
+
+```{r, GLD_PPM, cache = TRUE}
+S <- 4000; VE <- rep(NA, S); s <- 1; tries <- 0
+while (s <= S) {
+  VE_ <- qgld(runif(1), median = 0.3, IQR = 0.4, asymmetry = a_s[1], steepness = a_s[2])
+  theta_ <- (1 - VE_) / (2 - VE_) # theta_ is just an intermediate; VE is primitive
+  y_ <- rbinom(1, size = n, prob = theta_) # draw outcome conditional on theta_
+  if (y_ == y) { # check condition implied by observed outcome
+    VE[s] <- VE_
+    s <- s + 1
+  } # otherwise do nothing
+  tries <- tries + 1
+}
+summary(VE) # posterior summary of VE
+```
+
+## Unbounded GLD Priors (in "GLD_helpers.R")
+
+- $\mbox{VE} = \frac{1 - 2\theta}{1 - \theta}$ is negative if $\theta > \frac{1}{2}$,
+  (i.e. the vaccine gives you covid). We could handle that possibility with an additional 
+  VE quantile, such as
+```{r}
+(a_s <- GLD_solver_LBFGS(lower_quartile = 0.15, median = 0.3, upper_quartile = 0.55,
+                         other_quantile = -0.5, alpha = 0.01)) # 1% chance VE < -0.5
+```
+- $\alpha$ can also be $0$ or $1$, making `other_quantile` a lower or upper bound
+```{r}
+(a_s <- GLD_solver(lower_quartile = 0.15, median = 0.37, upper_quartile = 0.55,
+                   other_quantile = 1, alpha = 1)) # GLD_solver_BFGS doesn't work well here
+```
+
+## Important Maximimum Entropy Distributions
+
+* (Differential) Entropy is $-\mathbb{E}\left[\ln f\left(\theta \mid \dots\right)\right]$
+  and can construct $f$ to maximize
+* If $\Theta$ is some convex set, the maximum entropy distribution is the uniform distribution
+  over $\Theta$. For example, if $\Theta = \left[0,1\right]$, it is the standard uniform distribution
+  with PDF $f\left(\left.\theta\right|a=0,b=1\right) = 1$
+* If $\Theta = \mathbb{R}$, the maximum entropy distribution given an expectation and variance
+  is the normal distribution. This extends to bivariate and multivariate distributions if you have
+  given covariances.
+* If $\Theta = \mathbb{R}_+$, then the maximum entropy distribution for a given expectation is the 
+  exponential distribution with expectation $\mu = \frac{1}{\lambda}$. You can utilize the
+  fact that the median is $F^{-1}\left(0.5 \mid \mu \right) = \mu \ln 2$ to go from the median to $\mu$.
+* The binomial and Poisson distributions are maximum entropy distributions given $\mu$ for
+  their respective $\Omega$, which McElreath emphasises
+* Additional examples (often with weird constraints) are given on 
+  [Wikipedia](https://en.wikipedia.org/wiki/Maximum_entropy_probability_distribution)
+
+## Invariance to Reparameterization
+
+* A Jeffreys prior is proportional to the square root of the Fisher information
+* The Fisher information is defined as 
+  $$I\left(\theta\right) = -\mathbb{E}_{Y \mid \theta}\left[
+  \frac{\partial^2 \ell\left(\theta; y_1 \dots y_N\right)}
+  {\partial \theta \partial \theta}\right]$$
+  which is the expected log-likelihod, over datasets with a sample size $N$
+* Jaynes argued that the Jeffreys prior really only makes sense for a scale parameter and in
+  that case $f\left(\theta\right) \propto \frac{1}{\theta} = \sqrt{I\left(\theta\right)}$,
+  which is improper but arguably reasonable in this one particular situation
+* The Jeffreys prior on a scale parameter is the non-informative prior that conveys the information
+  that the units of $\theta$ convey no substantive information about its value, i.e. the
+  Jeffreys prior is the same whether $\theta$ is in Celsius or Farenheit
+
+## Three "Uninformative" Beta Priors
+
+* The Beta distribution maximizes entropy, given $\mathbb{E}\ln\theta$
+  and $\mathbb{E}\ln\left(1 - \theta\right)$
+* But if the likelihood is binomial, then the posterior is Beta with $a^\ast = a + y$
+  and $b^\ast = b + N - y$, so the uniform prior can be seen as adding one success and
+  one failure to the likelihood. This denies both that $\theta = 0$ and that $\theta = 1$.
+* Haldane argued the least informative Beta prior was the limit as $a \downarrow 0$
+  and $b \downarrow 0$ at the same rate, which is a uniform prior on the logarithm of
+  $\eta = \frac{\theta}{1 - \theta}$
+* Jeffreys argued a reasonable way to construct a prior would convey the same
+  amount of information about $\theta$ as $\eta$, leading to a Beta prior with
+  $a = 0.5 = b$
+```{r, echo = FALSE, fig.width=10, fig.height = 2.5, small.mar = TRUE}
+curve(dbeta(theta, 0.5, 0.5), from = 0, to = 1, cex = 1,
+      ylab = "PDF", xlab = expression(theta), xname = "theta")
+```
+
+## Dirichlet Distribution
+
+- Dirichlet distribution is over the parameter space of PMFs --- i.e. $\pi_k \geq 0$ and 
+  $\sum_{k = 1}^K \pi_k = 1$ --- and the Dirichlet PDF is
+$f\left(\boldsymbol{\pi} \mid \boldsymbol{\alpha}\right) = \frac{1}{B\left(\boldsymbol{\alpha}\right)}\prod_{k=1}^{K}\pi_{k}^{\alpha_{k}-1}$
+where $\alpha_{k}\geq0\,\forall k$ and the multivariate Beta
+function is $B\left(\boldsymbol{\alpha}\right)=\frac{\prod_{k=1}^{K}\Gamma\left(\alpha_{k}\right)}{\Gamma\left(\prod_{k=1}^{K}\alpha_{k}\right)}$
+where $\Gamma\left(z\right)=\int_{0}^{\infty}u^{z-1}e^{-u}du$ is
+the Gamma function
+- $\mathbb{E}\pi_{i}=\frac{\alpha_{i}}{\sum_{k=1}^{K}\alpha_{k}}\,\forall i$
+and the mode of $\pi_{i}$ is $\frac{\alpha_{i}-1}{-1+\sum_{k=1}^{K}\alpha_{k}}$
+if $\alpha_{i}>1$
+- Iff $\alpha_{k}=1\,\forall k$, $f\left(\left.\boldsymbol{\pi}\right|\boldsymbol{\alpha}=\mathbf{1}\right)$
+is constant over $\Theta$ (simplexes)
+- Beta distribution is a special case of the Dirichlet where $K = 2$
+- Marginal and conditional distributions for subsets of $\boldsymbol{\pi}$ are also Dirichlet
+- Dirichlet distribution is conjugate with the multinomial and categorical
+
+## Multinomial Distribution
+
+* The multinomial distribution over $\Omega = \{0,1,\dots,n\}$ has a PMF
+  $\Pr\left(\left.x\right|\pi_1,\pi_2,\dots,\pi_K\right) =
+  n!\prod_{k=1}^K \frac{\pi_k^{x_k}}{x_k!}$ where the parameters satisfy
+  $\pi_k \geq 0 \forall k$, $\sum_{k=1}^K \pi_k = 1$, and $n = \sum_{k=1}^K x_k$
+
+* The multinomial distribution is a generalization of the binomial distribution to the case that
+  there are $K$ possibilities rather than merely failure vs. success
+* Categorical is a special case where $n = 1$
+* The multinomial distribution is the count of $n$ independent categorical random variables
+  with the same $\pi_k$ values
+* Draw via `rmultinom(1, size = n, prob = c(pi_1, pi_2, ..., pi_K))`
