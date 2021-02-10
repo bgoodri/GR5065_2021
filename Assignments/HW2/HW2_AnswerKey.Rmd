@@ -1,0 +1,336 @@
+---
+title: "GR5065 Homework 2 Answer Key"
+date: "Due February 9, 2021 at 8PM New York Time"
+author: "Ben Goodrich"
+output: 
+  pdf_document: 
+    latex_engine: xelatex
+    number_sections: yes
+urlcolor: blue
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, setup, include = FALSE}
+set.seed(20210209)
+```
+
+# Equilibrium Climate Sensitivity
+
+This article is far from social science, utilizes non-standard probability distributions,
+could be criticized on various scientific grounds, and provides poor explanations in
+important places. Nevertheless, it manages to follow Bayes' Rule in the case of a single, 
+continuous $\chi$ whose value is assumed to be in $\Theta = \left[0,10\right]$ but is
+unknown. You need to be able to do the same before moving onto the case with multiple
+continuous unknown parameters.
+
+The entire issue of climate change is a pure Bayesian decision theory problem. Nothing
+has been randomized and it would be completely infeasible to randomly sample $N$ planets from
+the same population as the Earth and then randomly choose $\frac{N}{2}$ of those planets
+to rapidly (i.e. over a century or two) double the amount of carbon dioxide in their
+atmospheres and then compare their temperature increases to those in the control group of 
+$\frac{N}{2}$ planets whose atmospheres were left alone. We have one planet whose atmosphere
+has been subjected to a rapid increase in carbon dioxide (and other greenhouse gasses) and
+need to decide what to do in the present in order to have a better distant future.
+
+However, the statistics used in climate change is largely Frequentist and even the Bayesian
+stuff is not very good. For any value of $\chi$ between $0$ and $5$ degrees Celsius, you
+would today not be able to reject it as a null hypothesis, but what good is a null hypothesis
+test that essentially says "If you either assume the Earth is going to be fine in 100 years 
+or is going to be destroyed, or anywhere in between, continue assuming that."?
+
+Any plausible posterior distribution over $\chi$ will roughly look like the blue line in Figure 2
+of the paper in the sense that there will be considerable uncertainty but skew toward
+higher values. But if you weight a future cost function with such a posterior PDF, you will
+get an _expected_ future cost of hundreds of trillions of present dollars because there
+is a non-negligible weight on values of $\chi > 4$, at which point large parts of the
+Earth would be uninhabitable and there would be massive conflicts over the remaining parts.
+Thus, any plausible Bayesian analysis would imply that countries should gladly pay a
+few trillion dollars today in order to reduce the amount of carbon dioxide. Unfortunately,
+there is a lot of opposition to that from businesses who profit from extracting or using
+fossil fuels, from anti-science voters, and from people who do not understand the idea
+of maximizing expected utility. 
+
+The latter group tends to infer from the fact that $\chi$ _might_ be less than $1.5$ to 
+rationalize not spending a few trillion dollars in the present that might not be necessary 
+in order to preserve the Earth basically as it is now. They often advocate waiting until more 
+data are collected so we can be sure what amount of spending is necessary and sufficient to achieve 
+climate goals. But there won't be enough data to achieve any degree of certainty about $\chi$ until 
+it is far too late to do anything about it, if in fact $\chi$ is large. This is fairly comparable
+to a poker player who wants to wait to see the three cards that are turned face up before deciding
+whether to bet or fold, but the rules of poker require you to first decide whether to bet or fold 
+based only on your two face-down cards and the other bets.
+
+## Drawing from the prior
+
+```{r}
+ECS <- -rnorm(10^6, mean =  3.7, sd = 0.2 * 3.7) / 
+        rnorm(10^6, mean = -1.6, sd = 0.5 * 1.6)
+range(ECS)
+```
+
+## Truncating the prior
+
+```{r}
+ECS <- ECS[ECS >= 0 & ECS <= 10]
+length(ECS) / 10^6
+```
+
+## Describing the truncated prior
+
+```{r}
+round(c(`P(chi < 1.5)` = mean(ECS < 1.5),
+        `P(chi < 2.0)` = mean(ECS < 2.0),
+        `P(chi > 4.0)` = mean(ECS > 4.0),
+        `P(chi > 4.5)` = mean(ECS > 4.5),
+        `P(chi > 6.0)` = mean(ECS > 6.0)), digits = 2)
+```
+
+## PDF of a Ratio of Uncorrelated Normals
+
+```{r}
+dratio <- function(z, mu_X = -3.7, mu_Y = -1.6,
+                   sigma_X = 0.2 * 3.7, sigma_Y = 0.5 * 1.6) {
+  var_X <- sigma_X ^ 2
+  var_Y <- sigma_Y ^ 2
+  a <- sqrt((z ^ 2) / var_X  + 1 / var_Y)
+  b <- mu_X / var_X * z + mu_Y / var_Y
+  b_over_a <- b / a
+  c <- (mu_X ^ 2) / var_X + (mu_Y ^ 2) / var_Y
+  a_squared <- a ^ 2
+  a_cubed <- a_squared * a
+  d <- exp( (b ^ 2 - c * a_squared) / (2 * a_squared) )
+  sx_over_sy <- sigma_X * sigma_Y
+  return( b * d / a_cubed / (sqrt(2 * pi) * sx_over_sy) * 
+          (pnorm(b_over_a) - pnorm(-b_over_a)) + exp(-0.5 * c) / 
+            (a_squared * pi * sx_over_sy) )  
+}
+```
+
+Although this purported PDF seems to integrate to $1$,
+```{r}
+integrate(dratio, lower = -Inf, upper = Inf)
+```
+it is not obvious from its mathematical form that it is a strictly positive function. You
+could integrate its absolute value to verify that it is non-negative (or non-positive), but
+you could also just graph it over some reasonable range that includes virtually all of the
+probability to assure yourself that it is positive:
+```{r}
+curve(dratio(z), from = -5, to = 15, xname = "z", ylab = "PDF", las = 1)
+```
+
+## Describing the truncated prior, part II
+
+```{r}
+integrate(dratio, lower = 0, upper = 10)
+```
+
+Comparing this result to that in 1.2, we seem an important general lesson that a 
+sufficiently large number of random draws can approximate integrals to a few decimal
+places of accuracy.
+
+## The likelihood function components
+
+```{r}
+e <- c(Low_ii = .25, Low_iii = .35, Low_iv = .2, High_i = .75, High_ii = .65, High_iii = 0.6)
+c <- c(Low_ii = 1.5, Low_iii = 1.5, Low_iv =  2, High_i = 4.0, High_ii = 4.5, High_iii = 4.5)
+```
+```{r}
+likelihood <- function(chi, e_j, c_j) {
+  arg <- 2 * chi - 2 * c_j
+  return( ( (1  - 2 * e_j) * (2 * pnorm(arg * sqrt(2)) - 1) + 1 ) / 2)
+}
+```
+
+```{r}
+curve(likelihood(chi, e[1], c[1]), from = 0, to = 7, ylim = 0:1, xname = "chi", 
+      xlab = expression(chi), ylab = "Likelihood", las = 1)
+legend("bottomleft", legend = c("ii", "iii", "iv"), lty = 1, col = 1:3,
+       title = "Low ECS", ncol = 3, box.lwd = NA, bg = "lightgrey")
+legend("bottomright", legend = c("i", "ii", "iii"), lty = 2, col = 4:6,
+       title = "High ECS", ncol = 3, box.lwd = NA, bg = "lightgrey")
+for(j in 2:3) curve(likelihood(chi, e[j], c[j]), add = TRUE, col = j, xname = "chi")
+for(j in 4:6) curve(likelihood(chi, e[j], c[j]), add = TRUE, col = j, xname = "chi", lty = 2)
+```
+
+## Posterior PDF
+
+```{r}
+numerator <- function(chi, e, c) {
+  return( dratio(chi) * 
+          likelihood(chi, e_j = e[1], c_j = c[1]) * 
+          likelihood(chi, e_j = e[2], c_j = c[2]) * 
+          likelihood(chi, e_j = e[3], c_j = c[3]) * 
+          likelihood(chi, e_j = e[4], c_j = c[4]) * 
+          likelihood(chi, e_j = e[5], c_j = c[5]) * 
+          likelihood(chi, e_j = e[6], c_j = c[6]) )
+}
+```
+
+```{r}
+(denominator <- integrate(numerator, lower = 0, upper = 10, e = e, c = c)$value) # small
+curve(numerator(chi, e = e, c = c) / denominator, from = 0, to = 7, xname = "chi",
+      xlab = expression(chi), ylab = "Posterior PDF", col = "blue", las = 1)
+```
+
+```{r}
+round(c(`P(chi < 1.5)` = integrate(numerator, lower = 0.0, upper = 1.5, e = e, c = c)$value,
+        `P(chi < 2.0)` = integrate(numerator, lower = 0.0, upper = 2.0, e = e, c = c)$value,
+        `P(chi > 4.0)` = integrate(numerator, lower = 4.0, upper = 10,  e = e, c = c)$value,
+        `P(chi > 4.5)` = integrate(numerator, lower = 4.5, upper = 10,  e = e, c = c)$value,
+        `P(chi > 6.0)` = integrate(numerator, lower = 6.0, upper = 10,  e = e, c = c)$value) /
+        denominator, digits = 2)
+```
+
+# Darts
+
+Many things that we do at the start of GR5065 --- bowling, poker, the huge odd integer, 
+etc. are metaphors for things we might actually do in social science research. Darts
+are metaphorical for the degree of success on any continuous bivariate outcome that
+is somehow aggregated into a "score". For example, many spatial models of legislative
+voting assume a two dimensional space where one dimension is "economic" and the other
+dimension is "social" (usually meaning "racial" in the case of the United States).
+Legislators target a point in this two dimensional space and write, co-sponsor, and 
+vote on legislation to try to achieve that point before facing re-election. But they
+might not be able to achieve that point exactly for various reasons or be perceived
+as achieving during their reelection campaign.
+
+```{r, message = FALSE}
+library(darts)
+```
+
+## Drawing from a bivariate normal distribution
+
+```{r}
+sigma_X <- 42.67
+sigma_Y <- 68.67
+rho <- -0.16
+x <- rnorm(100, sd = sigma_X)
+y <- rnorm(100, mean = 0 + rho * sigma_Y / sigma_X * (x - 0), 
+           sd = sigma_Y * sqrt( (1 + rho) * (1 - rho) )) # more accurate than (1 - rho ^ 2)
+Tibshirani <- data.frame(x, y)
+```
+
+```{r}
+sigma_X <- 17.90
+sigma_Y <- 39.13
+rho <- -0.22
+x <- rnorm(100, sd = sigma_X)
+y <- rnorm(100, mean = 0 + rho * sigma_Y / sigma_X * (x - 0), 
+           sd = sigma_Y * sqrt( (1 + rho) * (1 - rho) )) # more accurate than (1 - rho ^ 2)
+Price <- data.frame(x, y)
+```
+
+```{r}
+drawBoard(new = TRUE)
+points(Tibshirani, pch = 20, col = "red")
+points(Price, pch = 20, col = "green")
+```
+
+## Normal Prior Distributions
+
+```{r}
+sigma_X <- abs(rnorm(1, mean = 30, sd = 10)) # must be non-negative
+sigma_Y <- abs(rnorm(1, mean = 40, sd = 15)) # must be non-negative
+rho <- rnorm(1, mean = -0.15, sd = 0.1)
+while (rho < -1 || rho > 1) rho <- rnorm(1, mean = -0.15, sd = 0.1)
+
+x <- rnorm(100, sd = sigma_X)
+y <- rnorm(100, mean = 0 + rho * sigma_Y / sigma_X * (x - 0), 
+           sd = sigma_Y * sqrt( (1 + rho) * (1 - rho) )) # more accurate than (1 - rho ^ 2)
+Me <- data.frame(x, y)
+drawBoard(new = TRUE)
+points(Tibshirani, pch = 20, col = "red")
+points(Price, pch = 20, col = "green")
+points(Me, pch = 20, col = "black")
+```
+
+## Scoring Function
+
+```{r}
+score <- function(x, y) {
+  stopifnot(is.numeric(x), length(x) == 1, is.numeric(y), length(y) == 1)
+  
+  # convert x and y in Cartesian coordinates to a radius and angle in polar coordinates
+  # https://en.wikipedia.org/wiki/Polar_coordinate_system
+  radius <- sqrt(x ^ 2 + y ^ 2)
+  angle  <- atan2(y, x)
+  if (radius > 170)   return(0)  # misses dartboard
+  if (radius <= 6.35) return(50) # double bullseye
+  if (radius <= 15.9) return(25) # single bullseye
+  margin <- pi / 20
+  interval <- margin * 2
+  small <- pi / 2 - margin - 0:19 * interval
+  large <- pi / 2 + margin - 0:19 * interval
+  bed <- which(angle > small & angle <= large)
+  if (length(bed) == 0) {
+    angle <- angle - 2 * pi
+    bed <- which(angle > small & angle <= large)
+  }
+  S <- darts:::getConstants()$S  # 20, 1, ..., 5
+  score <- S[bed]
+  if (radius >= 99 && radius <= 107)       score <- 3 * score # in triple ring
+  else if (radius >= 162 && radius <= 170) score <- 2 * score # in double ring
+  return(score)
+}
+```
+
+```{r}
+scores <- sort(mapply(score, x = Me$x, y = Me$y))
+barplot(prop.table(table(scores)), ylab = "Proportion", las = 1)
+```
+
+## Estimating the parameters
+
+```{r}
+(var_X  <- sigma_X ^ 2)
+(var_Y  <- sigma_Y ^ 2)
+(cov_XY <- sigma_X * sigma_Y * rho)
+(Sigma_hat <- generalEM(scores)$Sig.final)
+```
+The point estimates are not that close to the "true" values
+(which were merely realizations from the prior) that generated my darts data.
+
+## Expected scores
+
+```{r}
+E_hat  <- generalExpScores(Sigma_hat)
+E_true <- generalExpScores(c(var_X, var_Y, cov_XY))
+```
+
+```{r}
+drawBoard(new = TRUE)
+drawAimSpot(E_hat)
+drawAimSpot(E_true, col = "cyan")
+```
+
+The optimal aim points are not too different in this case, despite differences in the 
+estimated variances and covariance.
+
+However, this subproblem illustrates one of the fundamental difficulties with the
+Frequentist approach to decision-making. It would be fairly straightforward to
+choose the optimal aim point for a person if their $\sigma_X$, $\sigma_Y$, and $\rho$ 
+were known. However, much of the uncertainty about the location of a person's optimal 
+aim point is due to uncertainty about their $\sigma_X$, $\sigma_Y$, and $\rho$. So,
+Frequentists proceed by plugging in _estimates_ of $\sigma_X$, $\sigma_Y$, and $\rho$
+and proceeding as if these estimates were the true parameters. But when the utility
+function is nonlinear in the parameters --- and the scoring function in darts is 
+not only not a linear function of the aim spot but also discretized, non-monotonic in 
+both $x$ and $y$, and generally weird --- then expected utility is not equal to the
+utility function evaluated at the expected $x$ and $y$. Thus, even if you had an
+unbiased estimator of $\sigma_X$, $\sigma_Y$, and $\rho$ simply plugging those
+estimates into an optimation routine (such as EM) does not give you what you really
+want, which is the optimal aim point irrespective of $\sigma_X$, $\sigma_Y$, and $\rho$?
+
+For that, you would need to marginalize the score function for a given aim point
+over $\sigma_X$, $\sigma_Y$, and $\rho$, weighting by their posterior PDF given the
+data you observe, and choosing the aim point with the highest expected score. That would 
+be fairly straightforward to do (numerically), but is something that Frequentists say 
+should not be done (at least in science, public policy, etc.) because the posterior PDF 
+depends, in part, on your subjective prior PDFs for $\sigma_X$, $\sigma_Y$, and $\rho$ 
+rather than exclusively on the data you observe. Even though the prior PDFs are subjective,
+they are closer to the truth than pretending all values of $\sigma_X \geq 0$, 
+$\sigma_Y \geq 0$, and $\rho \in \left[-1,1\right]$ are equally plausible before
+you see the data. Thus, the Bayesian version of decision theory is preferred by almost 
+everyone who has studied it, but you need a posterior distribution (and a utility function,
+which is also a subjective choice) to carry it out.
