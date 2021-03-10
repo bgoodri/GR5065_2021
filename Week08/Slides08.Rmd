@@ -1,0 +1,390 @@
+---
+title: "Linear Models with the **rstanarm** R Package"
+author: "Ben Goodrich"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+autosize: true
+header-includes:
+   - \usepackage{amsmath}
+   - \usepackage{amssymb}
+   - \usepackage{color}
+output:
+  ioslides_presentation:
+    widescreen: yes
+editor_options: 
+  chunk_output_type: console
+---
+<style type="text/css">
+slides > slide:not(.nobackground):after {
+  content: '';
+}
+</style>
+
+```{r setup, include=FALSE}
+options(width = 90)
+library(knitr)
+knit_hooks$set(small.mar = function(before, options, envir) {
+    if (before) par(mar = c(4, 4, .1, .1), las = 1)  # smaller margin on top and right
+})
+hook_output <- knit_hooks$get("output")
+knit_hooks$set(output = function(x, options) {
+  lines <- options$output.lines
+  if (is.null(lines)) {
+    return(hook_output(x, options))  # pass to default hook
+  }
+  x <- unlist(strsplit(x, "\n"))
+  more <- "..."
+  if (length(lines)==1) {        # first n lines
+    if (length(x) > lines) {
+      # truncate the output, but add ....
+      x <- c(head(x, lines), more)
+    }
+  } else {
+    x <- c(more, x[lines], more)
+  }
+  # paste these lines together
+  x <- paste(c(x, ""), collapse = "\n")
+  hook_output(x, options)
+})
+library(rstanarm)
+library(ggplot2)
+set.seed(20210309)
+```
+
+## Prior Predictive Distribution for a Linear Model
+
+$$\alpha \thicksim ??? \\
+  \forall k: \beta_k \thicksim ??? \\
+  \forall n: \mu_n \equiv \alpha + \sum_{k = 1}^K \beta_k x_{nk} \\
+  0 < \sigma \thicksim ??? \\
+  \forall n: \epsilon_n \thicksim \mathcal{N}\left(0, \sigma\right) \\
+  \forall n: y_n \equiv \mu_n + \epsilon_n$$
+where `???` indicates the parameter to the left is drawn from a distribution that is up to you,
+but you can always use the Generalized Lambda Distribution
+
+* The assumption of this data-generating process is that each $\epsilon_n$
+  is MARGINALLY normal (with expectation $0$ and standard deviation $\sigma > 0$), 
+  implying that each $y_n$ is CONDITIONALLY normal
+  (with expectation $\mu_n$ and standard deviation $\sigma$)
+
+## Hibbs' Bread Model for Presidential Vote % {.build}
+
+* What is the relationship between growth and incumbent party vote share?
+```{tikz, fig.cap = "Hibbs Model", fig.ext = 'png', echo = FALSE}
+\usetikzlibrary{bayesnet}
+\begin{tikzpicture}[node distance=2cm, auto,>=latex', thick, scale = 0.1]
+
+  % Define nodes
+
+  % Y
+  \node[obs]          (y)   {vote \%}; %
+
+  % X
+  \node[obs, left=5 of y] (x)   {growth}; %
+
+  % conditional mean function
+  \node[det, right=2 of x] (m) {$\mu$} ; %
+
+  % parameters
+  \node[latent, above=0.6 of m]  (a) {$\alpha$} ; %
+  \node[latent, above=0.4 of x]  (b) {$\beta$}  ; %
+  \node[latent, above=0.4 of y]  (s) {$\sigma$} ; %
+  \edge {a,b,x} {m} ; %
+  
+  % Factors
+  \factor[left=of y] {y-f} {below:$\mathcal{N}$} {m,s} {y} ; %
+  \factor[above=of a] {a-f} {left:GLD} {} {a}; %
+  \factor[above=of b] {b-f} {left:GLD} {} {b} ; %
+  \factor[above=of s] {s-f} {right:GLD} {} {s} ; %
+  
+  % Hyperparameters
+  \node[const, right=0.5 of b-f] (q_b) {$\mathbf{q}_\beta$} ; %
+  \edge[-] {q_b} {b-f} ; %
+  \node[const, right=0.5 of a-f] (q_a) {$\mathbf{q}_\alpha$} ; %
+  \edge[-] {q_a} {a-f} ; %
+  \node[const, left=0.5 of s-f] (q_s) {$\mathbf{q}_\sigma$} ; %
+  \edge[-] {q_s} {s-f} ; %
+  
+  % Operators
+  \node[const, above=0.15 of x] (times) {$\times$} ; %
+  \node[const, right=1.00 of b] (plus) {$+$} ; %
+  
+  
+  % Plates
+  \plate {yx} { %
+    (y)(y-f)(y-f-caption) %
+    (x)(x)(y-f-caption) %
+  } {$\forall t \in 1, 2, \dots, T$} ;
+\end{tikzpicture}
+```
+
+* Circles are variables, shading indicates the variable is observable, 
+  diamond indicates the quantity is deterministic, plates indicate that
+  all of the interior quantities are indexed by $t$, squares indicate
+  probability distributions
+
+## Hyperparameters of GLD Priors
+
+```{r}
+source(file.path("..", "Week05", "GLD_helpers.R"))
+a_s <- list(alpha = GLD_solver_bounded(bounds = c(0, 100), median = 52, IQR = 4),
+            beta  = GLD_solver(lower_quartile = -2, median = 0, upper_quartile = 3,
+                               other_quantile = 6.5, alpha = 0.9),
+            sigma = GLD_solver(lower_quartile = 2.5, median = 4, upper_quartile = 6, 
+                               other_quantile = 0, alpha = 0)
+)
+```
+
+## Answer: Prior Predictive Distribution
+
+```{r, message = FALSE}
+ROOT <- "https://raw.githubusercontent.com/avehtari/ROS-Examples/master/"
+hibbs <- readr::read_delim(paste0(ROOT, "ElectionsEconomy/data/hibbs.dat"), delim = " ")
+growth <- hibbs$growth - mean(hibbs$growth) # note centering
+
+vote_ <- t(replicate(10000, {
+  alpha_ <- qgld(runif(1), median = 52, IQR = 4,
+                    asymmetry = a_s$alpha[1], steepness = a_s$alpha[2])
+  beta_ <- qgld(runif(1), median = 0, IQR = 3 - -2,
+                asymmetry = a_s$beta[1], steepness = a_s$beta[2])
+  mu_ <- alpha_ + beta_ * growth
+  sigma_ <- qgld(runif(1), median = 4, IQR = 6 - 2.5,
+                 asymmetry = a_s$sigma[1], steepness = a_s$sigma[2])
+  epsilon_ <- rnorm(n = length(mu_), mean = 0, sd = sigma_)
+  y_ <- mu_ + epsilon_ # y_ has a normal distribution with expectation mu_
+  y_
+}))
+colnames(vote_) <- hibbs$year
+```
+
+## Checking the Prior Predictive Distribution {.smaller}
+
+```{r}
+summary(vote_) # prior predictive distribution is a bit too wide
+```
+
+## Checking the Prior Predictive Distribution
+
+```{r, small.mar = TRUE, fig.width=10, fig.height=5}
+boxplot(c(vote_) ~ rep(growth, each = 10000), pch = ".", xlab = "Growth", ylab = "Vote %")
+```
+
+## The `stan_glm` Function in the rstanarm Package
+
+```{r, results = "hide"}
+options(mc.cores = parallel::detectCores()) # use all the cores on your computer
+post <- stan_glm(vote ~ growth, data = hibbs, family = gaussian,
+                 prior_intercept = normal(location = 52, scale = 2), 
+                 prior = normal(location = 2.5, scale = 1),
+                 prior_aux = exponential(rate = 0.25)) # expectation of 4
+```
+```{r, output.lines = -(1:5)}
+post # intercept relative to uncentered growth
+```
+
+## Plotting the Marginal Posterior Densities
+
+```{r}
+plot(post, plotfun = "areas_ridges", pars = c("growth", "sigma")) # excluding intercept
+```
+
+## Credible Intervals and $R^2$
+
+```{r}
+# what people mistake confidence intervals for
+round(posterior_interval(post, prob = 0.8), digits = 2)
+summary(bayes_R2(post))
+```
+
+## Posterior Probabilities
+
+```{r}
+beta <- as.data.frame(post)$growth
+mean(beta < 0) # what people mistake p-values for
+mean(beta < 1) # can use other values besides 0
+```
+
+## Why NUTS Is Better than Other MCMC Samplers
+
+* With Stan, it is almost always the case that things either go well or you get
+  warning messages saying things did not go well
+* Because Stan uses gradients, it scales well as models get more complex
+* The first-order autocorrelation tends to be negative so you can get greater
+  effective sample sizes (for mean estimates) than nominal sample size
+```{r}
+round(bayesplot::neff_ratio(post), digits = 2)
+```
+
+## Excercise: IQ of Three Year Olds {.build}
+
+* Many rstanarm examples are available at https://avehtari.github.io/ROS-Examples/examples.html
+* At 36 months, kids were given an IQ test
+* Suppose the conditional expectation is a linear function of variables
+  pertaining to the mother
+* Draw from your prior predictive distribution
+```{r}
+data(kidiq, package = "rstanarm")
+colnames(kidiq)
+mom_hs  <- kidiq$mom_hs - mean(kidiq$mom_hs)
+mom_iq  <- (kidiq$mom_iq - mean(kidiq$mom_iq)) / 10   # units are 10-points, not points
+mom_age <- (kidiq$mom_age - mean(kidiq$mom_age)) / 10 # units are decades, not years
+```
+
+## An Answer
+
+```{r}
+kid_score <- with(kidiq, t(replicate(10000, {
+  alpha_ <- rnorm(1, mean = 100, sd = 15)
+  beta_hs_  <- rnorm(1, mean = 0, sd = 2.5)
+  beta_iq_  <- rnorm(1, mean = 0, sd = 2.5)
+  beta_age_ <- rnorm(1, mean = 0, sd = 2.5)
+  mu_ <- alpha_ + beta_hs_ * mom_hs + beta_iq_ * mom_iq + beta_age_ * mom_age
+  
+  sigma_ <- rexp(1, rate = 1 / 15)
+  epsilon_ <- rnorm(n = length(mu_), mean = 0, sd = sigma_)
+  mu_ + epsilon_
+})))
+summary(kid_score[ , 1]) # predictive distribution for first 3 year old (much too wide)
+```
+
+## Drawing from the Prior in rstanarm {.smaller}
+
+```{r, results="hide"}
+priors <- stan_glm(kid_score ~ mom_hs + I(mom_iq / 10) + I(mom_age / 10), 
+                   data = kidiq, family = gaussian(), prior_PD = TRUE,
+                   prior_intercept = normal(location = 100, scale = 15), 
+                   prior = normal(), prior_aux = exponential(rate = 1 / 15))
+```
+```{r, fig.height = 3.5, fig.width = 10}
+plot(priors, regex_pars = "mom") # include only mom parameters
+```
+
+## Prior Predictive Distribution in rstanarm
+
+```{r, small.mar = TRUE, fig.height=4, fig.width=10}
+prior_PD <- posterior_predict(priors); dim(prior_PD) # actually prior predictions
+hist(prior_PD[ , 1], breaks = 50, prob = TRUE, main = "") # tails are too heavy
+```
+
+## Drawing from the Posterior Distribution
+
+```{r, results = "hide"}
+post <- update(priors, prior_PD = FALSE)
+```
+```{r, output.lines = -(1:12)}
+summary(post)
+```
+
+## Posterior vs. Prior
+
+```{r, message = FALSE}
+posterior_vs_prior(post, prob = 0.5, regex_pars = "^[^(]") # excludes (Intercept)
+```
+
+## ShinyStan
+
+- ShinyStan can be launched on an object produced by rstanarm via
+```{r, eval = FALSE, include = TRUE}
+launch_shinystan(post)
+```
+- A webapp will open in your default web browser that helps you visualize
+ the posterior distribution and diagnose problems
+
+## Plot at the Posterior Median Estimates
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 5.5, fig.width = 10}
+b <- coef(post); intercepts <- c(b[1], sum(b[1:2])); slopes <- c(b[3], sum(b[3:4]));
+library(ggplot2)
+ggplot(kidiq, aes(mom_iq, kid_score)) + geom_point(aes(color = as.factor(mom_hs)), show.legend = FALSE) +
+  geom_abline(intercept = intercepts, slope = slopes, color = c("gray", "black")) +
+  scale_color_manual(values = c("gray", "black")) + 
+  labs(x = "Mother IQ score", y = "Child test score")
+```
+
+## Correct Plot
+
+```{r, message = FALSE, fig.height = 5, fig.width = 10}
+pp_check(post, plotfun = "loo_intervals", order = "median")
+```
+
+## Data on Diamonds {.build}
+
+```{r, message = FALSE}
+data("diamonds", package = "ggplot2")
+diamonds <- diamonds[diamonds$z > 0, ] # probably mistakes in the data
+str(diamonds)
+```
+
+> - What do you think is the prior $R^2$ for a model of `log(price)`?
+
+## Do This Once on Each Computer You Use
+
+- R comes with a terrible default coding for ordered factors in regressions known
+  as "Helmert" contrasts
+- Execute this once to change them to "treatment" contrasts, which is the conventional
+  coding in the social sciences with dummy variables relative to a baseline category
+```{r, eval = FALSE}
+cat('options(contrasts = c(unordered = "contr.treatment", ordered = "contr.treatment"))',
+    file = "~/.Rprofile", sep = "\n", append = TRUE)
+```
+- Without this, you will get a weird rotation of the coefficients on the `cut` and
+  `clarity` dummy variables
+- `"contr.sum"` is another reasonable (but rare) choice
+
+## The `stan_lm` Function  {.smaller}
+
+```{r, diamonds, results = "hide", cache = TRUE, message = FALSE, warning = FALSE}
+post <- stan_lm(log(price) ~ carat * (log(x) + log(y) + log(z)) + cut + color + clarity,
+                data = diamonds, prior = R2(location = 0.8, what = "mode"), adapt_delta = 0.9)
+```
+<div class="columns-2">
+```{r}
+str(as.data.frame(post), vec.len = 3, digits.d = 2)
+```
+</div>
+
+## Typical Output
+
+<div class="columns-2">
+```{r, output.lines = -(1:7)}
+print(post, digits = 4)
+```
+</div>
+
+## What Is the Effect of an Increase in Carat? {.build}
+
+```{r, delta, cache = TRUE, fig.height = 4, fig.width = 10, small.mar = TRUE, warning = FALSE}
+mu_0 <- exp(posterior_linpred(post, draws = 500)) / 1000
+df <- diamonds[diamonds$z > 0, ]; df$carat <- df$carat + 0.2
+mu_1 <- exp(posterior_linpred(post, newdata = df, draws = 500)) / 1000
+plot(density(mu_1 - mu_0), xlab = expression(mu[1] - mu[0]), xlim = c(.3, 10), log = "x", main = "")
+```
+
+## Linear Models with Nonlinear Predictors
+
+* `stan_lm` and `stan_glm` (with `family = gaussian`) only require that $\mu$ be a linear
+  function of the coefficients but allow $\mu$ to be a nonlinear function of $x$
+* For example, you can utilize a "restricted cubic spine" function that estimates
+  a curve along with its first three derivatives
+```{r, results = "hide"}
+post <- stan_lm(kid_score ~ mom_hs + rms::rcs(mom_iq) + rms::rcs(mom_age), 
+                 data = kidiq, prior = R2(0.25, what = "mode"),
+                 prior_intercept = normal(location = 100, scale = 15))
+```
+<div class="columns-2">
+```{r, output.lines = 7:23}
+print(post)
+```
+</div>
+
+## Don't (Mis)Interpret; Plot your Posterior Beliefs
+
+```{r, small.mar = TRUE, fig.width=10, fig.height=3.25}
+beta_age <- as.matrix(post)[ , 7:10] # 4000 x 4
+X <- rms::rcs(sort(kidiq$mom_age))   # 434 x 4
+effect_age <- beta_age %*% t(X)      # 4000 x 434
+quantiles <- apply(effect_age, MARGIN = 2, FUN = quantile, 
+                   probs = c(0.1, 0.25, 0.5, 0.75, 0.9))
+matplot(x = sort(kidiq$mom_age), y = t(quantiles) + 160, type = "l",
+        xlab = "Mom's Age (when kid is born)", ylab = "Kid's IQ") # 1 color per quantile
+```
+
