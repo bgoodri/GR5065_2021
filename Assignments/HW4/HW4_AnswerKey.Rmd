@@ -1,0 +1,440 @@
+---
+title: "GR5065 Homework 4 Answer Key"
+date: "Due March 16, 2021 at 8PM New York Time"
+author: "Ben Goodrich"
+output: 
+  pdf_document: 
+    latex_engine: xelatex
+    number_sections: yes
+urlcolor: blue
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, setup, include = FALSE}
+set.seed(20210316)
+library(rstanarm)
+options(mc.cores = parallel::detectCores())
+```
+
+# Minimum Wage Increases
+
+```{r}
+Manning <- readRDS("Manning.rds")
+```
+
+## Frequentist Inference
+
+Fisher's design-based inference is not applicable because the treatment variable,
+the minimum wage, is not randomly assigned. Nor is Manning interested in testing
+a null hypothesis that the minimum wage has no effect on wages.
+
+Manning does utilize confidence intervals, which are a creation of Neyman. And,
+in this case, the data are a random sample (albeit not a simple random sample,
+which is why Manning utilizes weights), so it is at least possible to attempt to
+answer questions like "What is the distribution of a point or interval estimator
+across randomly-sampled datasets of size $N$?" However, when $N = 383,477$
+whether your point or interval estimator would have been substantially different
+had a _different_ set of $N = 383,477$ been included in the sample is not a 
+major concern.
+
+Indeed, it seems as if most of the uncertainty that Manning has is due to which
+model(s) should be used for wages and employment. Uncertainty over models is
+not something that the Frequentist approach is well-equipped to handle because
+models are not random variables and because Frequentist probability is conditional
+on the true parameters in the true model. At best, if one model is a special
+case of another, Frequentists can test a null hypothesis that the special case
+is the correct model against the alternative that the more general model is
+correct, but that again involves the distribution of a test statistic across
+randomly-sampled datasets of size $N$ conditional on the special case model.
+
+Rather, it appears as if Manning is treating the estimated confidence intervals
+as if they were Bayesian credible intervals for the purpose of probabilistically
+describing uncertainty the uncertainty about the coefficient (which is not even
+a coherent idea from a Frequentist perspective). Indeed, this is what Laplace
+did, albeit in the 1700s. This approach assumes that the posterior distribution
+is multivariate normal if the priors are improper, in which case the maximum
+likelihood estimates yield estimates of the posterior mean / median / mode
+and the curvature of the likelihood at the mode can be used to estimate the
+posterior variance of a parameter.
+
+There are several problems with this approach. First, the assumption that the
+posterior distribution is multivariate normal is never strictly true, is
+completely unnecessary for Bayesian analysis, and cannot be verified without
+doing a separate Bayesian analysis. Second, improper priors are bad for a
+variety of reasons and entail things that no one believes, such as the 
+coefficient on the minimum wage being near one million is just as plausible
+as the coefficient being near zero. Third, it is scarcely more difficult
+to do a genuine Bayesian analysis with proper priors.
+
+## Bayesian Inference
+
+We can just as easily obtain Bayesian estimates, although in the case of
+`stan_lm`, we need to describe our prior beliefs about the $R^2$ (and
+perhaps the intercept as well, although the default is often fine). For
+most outcome variables in the social sciences that are measured at the
+level of an individual person, the $R^2$ tends to be low because people
+are unpredictable, particularly in this case when we do not know anything
+about these people except that they are young, were measured in some quarter
+and live in some state (which has state-time characteristics like the
+minimum wage, the percentage of teens in the labor force, and the unemployment 
+rate). So, in this case I chose a prior mode of $0.2$ for the $R^2$, although
+the posterior distribution and Bayesian inference are correct (albeit slightly
+different) for any prior value of the $R^2$.
+
+```{r, Manning, results = "hide", cache = TRUE, warning = FALSE}
+post_teen <- stan_lm(log(rw) ~ log(min_mw) + teen_perc + unem_rate + 
+                       state + time + state : as.integer(time),
+                     data = Manning, subset = age <= 19,
+                     prior_intercept = normal(location = log(10), scale = 2),
+                     prior = R2(0.2, what = "mode"), seed = 20210316)
+post_20s <- update(post_teen, subset = age >= 20 & age <= 24)
+```
+
+As it turns out, the posterior distribution for the $R^2$ is even lower.
+
+```{r}
+print(summary(post_teen, pars = c("log(min_mw)", "R2")), digits = 3)
+```
+
+## Interpretation
+
+Plots are usually preferable to numerical summaries (if the journal will
+give you the space for a plot) because they better convey the idea that the
+"answer" is the posterior distribution rather than a single point estimate or 
+a few such numbers that describe some aspect of the posterior distribution.
+Here we can plot the posterior density for the coefficient on `log(min_mw)`
+and it essentially conveys that it is quite near $0.2$ among teenagers.
+```{r}
+plot(post_teen, plotfun = "areas_ridges", pars = "log(min_mw)") + ggplot2::ggtitle("Teenagers")
+```
+
+That is numerically similar but conceptually different than the estimated
+confidence interval shown in the row for Specification 2 in Figure 2 of
+Manning's paper. The reason for the similarity in this case is that the
+marginal posterior distribution for the effect of the minimum wage really
+is close to normal and is not very influenced by the priors when 
+$N = `r sum(Manning[ , "age"] <= 19)`$. The endpoints of Manning's
+confidence intervals are a bit wider than the posterior distribution,
+indicating that the estimated dispersion in the point estimate across
+randomly-sampled datasets of size $N$ is somewhat larger than the dispersion
+of one's beliefs about the coefficient on the basis of one dataset of size
+$N$ (and the priors). But people who use Frequentist methods do not care
+very much how wide a estimated confidence interval is; only whether in
+include the hypothesized value or not.
+
+However, humans are notoriously bad at judging relative area (which is one
+reason why pie charts are garbage), so plotting the posterior density is
+not always the best choice, particularly if you want to show posterior
+margins for multiple parameters. Among people in their early twenties,
+the primary three posterior margins look like
+```{r}
+plot(post_20s, plotfun = "intervals", pars = c("log(min_mw)", "teen_perc", "unem_rate")) + 
+  ggplot2::ggtitle("Early 20s")
+```
+
+which is again conceptually different than Manning's estimated confidence
+interval in the row for Specification 2 in Figure 3 but is numerically
+similar in its center and somewhat smaller in its dispersion.
+
+## Prediction
+
+We can also plot the difference in the predicted effect of raising the
+federal minimum wage to $15 across states. There are a variety of ways
+to visualize that, but the one shown in Figure 1 on the next page is
+```{r, warning=FALSE, fig.cap="Predicted Wage Change by State", fig.height=9, fig.width=6, fig.asp=2}
+recent <- dplyr::filter(Manning, age <= 19, time == "2019.4")
+factual <- exp(posterior_predict(post_teen, newdata = recent))
+recent_ <- dplyr::mutate(recent, min_mw = pmax(min_mw, 15))
+counterfactual <- exp(posterior_predict(post_teen, newdata = recent_))
+difference <- counterfactual - factual
+bayesplot::ppc_intervals_grouped(y = rep(0, ncol(difference)), x = recent$rw,
+                                 yrep = difference, group = recent$state, 
+                                 facet_args = list(ncol = 4)) + 
+  ggplot2::xlim(7, 20) + ggplot2::xlab("Current Wage") +
+  ggplot2::theme(legend.position = "none")
+```
+
+The overall message here is that there is tremendous uncertainty in
+how much an individual's wages would change in every state. How can this be?
+In the above code, it is assumed that the realization of $\epsilon_i$ for
+the $i$-th individual in $2019$ is independent of the realization of $\epsilon_i$ 
+for that same person if the federal minimum wage were \$15 in $2019$. If we
+instead assume those two errors would be the same for person $i$ in both scenarios,
+then $\epsilon_i$ cancels out when we take the difference. Thus, we could instead 
+plot the differences in the (antilogged) conditional expectation of log-wages:
+
+```{r, warning=FALSE, fig.cap = "Expected Wage Change by State", fig.height = 9, fig.width = 6, fig.asp=2}
+factual <- posterior_linpred(post_teen, newdata = recent)
+counterfactual <- posterior_linpred(post_teen, newdata = recent_)
+difference <- exp(counterfactual - factual)
+bayesplot::ppc_intervals_grouped(y = rep(0, ncol(difference)), x = recent$rw,
+                                 yrep = difference, group = recent$state,
+                                 facet_args = list(ncol = 4), size = 0.1) + 
+  ggplot2::xlim(7, 20) + ggplot2::xlab("Current Wage") +
+  ggplot2::theme(legend.position = "none")
+```
+
+Now the plots in Figure 2 on the next page seem to suggest that teens should expect 
+their wage to increase by about a dollar, although it varies somewhat by state because 
+states had different minimum wages in $2019$ so the effect of increasing the federal
+minimum wage to \$15 would be larger in states where the minimum wage was far less than \$15.
+
+\newpage
+
+## Addendum
+
+People are not sufficiently appreciating the fact that everything that is deductively
+true about Frequentist statistics pertains to the probability distribution of an
+estimator across many randomly-sampled datasets of size $N$. Suppose that instead of
+having one sample of $754,350$ observations of wage-earners whose age is between $20$
+and $24$, we have $214$ datasets that are each of size $N = 3,525$. We can obtain a list
+of Frequentist point or interval estimates for each of those $214$ datasets by randomly
+permuting the row indices and then dividing them into $214$ sets of $N = 3,525$
+```{r, OLS, cache = TRUE}
+Manning <- Manning[Manning$age >= 20, ]
+obs <- matrix(sample(1:nrow(Manning), size = nrow(Manning), replace = FALSE),
+              nrow = 3525, ncol = 214)
+OLS <- apply(obs, MARGIN = 2, FUN = function(o)
+  lm(log(rw) ~ log(min_mw) + teen_perc + unem_rate + 
+       state + time + state : as.integer(time),
+       data = Manning[o, ])
+)
+```
+```{r}
+beta <- sapply(OLS, FUN = function(estimate) coef(estimate)[2])
+plot(density(beta), las = 1,
+     main = "Distribution of OLS estimates\nof the effect of the minimum wage")
+```
+
+That distribution of $214$ estimates of the effect of the minimum wage does not 
+look particularly normal but Frequentist theory assures us that it is indeed
+normal (and it would look so if we could obtain more than $214$ datasets
+from this population). However, even though that distribution is normal, the
+true expectation and standard deviation that generate it are unknown. If we
+actually had many datasets, we could easily estimate this expectation and standard
+deviation if we wanted to, but in reality when we only have one dataset, then
+researchers have to fall back on making _assumptions_, such as $\beta = 0$,
+that allow us to estimate the probability of obtaining a $\widehat{\beta}$
+from a _future_ dataset of size $N$ that has been randomly sampled from the
+same population that is greater in magnitude than the $\widehat{\beta}$
+we obtained from _this_ dataset of size $N$ conditional on the true $\beta$
+being zero. This $p$-value has nothing to do with what $\beta$ is (because
+the $p$-value calculation assumes $\beta = 0$ or whatever the null hypothesis is)
+but historically it meant your paper was eligible to be published in a scientific
+journal if and only if the $p$-value was less than $0.05$, although in recent years
+the American Statistical Association has recommended that journals not decide
+which papers to publish on the basis of $p$-values without taking the additional
+step of recommending papers use Bayesian methods.
+
+Since people claim that a confidence interval is "a range of plausible values"
+for $\beta$ or ascribe other Bayesian misinterpretations to it, it is useful
+to show where the "95 percent" in a 95 percent confidence interval comes from.
+We can compute the estimated confidence intervals in each of the $214$ datasets
+and then plot them.
+```{r}
+CI <- t(sapply(OLS, FUN = function(estimate) confint(estimate, parm = 2, level = 0.95)))
+CI <- CI[order(beta), ]
+plot(NA, NA, type = "n", xlim = range(CI), ylim = c(1, nrow(CI)), las = 1,
+     xlab = "Estimate", ylab = "Dataset", 
+     main = "OLS confidence intervals\nfor the effect of the minimum wage")
+invisible(sapply(1:nrow(CI), FUN = function(j) segments(x0 = CI[j, 1], y0 = j, x1 = CI[j, 2])))
+```
+
+Frequentist theory assures us that we should expect 95 percent of those confidence
+intervals to include the true $\beta$. In this case, about $203$ should include
+the true $\beta$ and about $11$ should not include the true $\beta$. But we
+do not know _which_ confidence intervals on the plot exclude $\beta$, and in
+more a realistic setting where we only have one estimated confidence interval,
+Frequentists cannot say whether $\beta$ is included in _that_ estimated confidence 
+interval nor anything about the probability that $\beta$ (which is not even a
+random variable) is included in _that_ estimated confidence interval.
+
+Frequentist theory deduces the properties of an estimator across randomly-sampled
+datasets of size $N$ (but usually only as $N \uparrow \infty$. If those properties 
+are acceptable for an estimator and if all scientists utilized that estimator when
+its assumptions held, then the estimates collectively would exhibit those properties
+across empirical scientific disciplines. But Frequentist theory says nothing about
+what an individual scientist should believe about $\beta$ on the basis of one
+dataset, except to say that no one's personal beliefs about $\beta$ should influence
+science. That is why I say that Frequentism is about the forest rather than the 
+trees, but individual scientists are much more interested in their tree rather than 
+than the forest that is constituted by other scientists' trees. Thus, an individual
+scientist has no incentive to strictly follow what Frequentistism dictates, unless
+journals enforce some (version) of them by not publishing papers that, for example,
+have $p$-values greater than $0.05$. Now that the American Statistical Association
+has finally recommended journals abandon such policies, what reason does an individual
+scientist have to use a Frequentist estimator?
+
+# Voter Turnout in France
+
+```{r}
+Eggers <- readRDS("Eggers.rds")
+Eggers$PR <- as.integer(Eggers$rrv >= 0)
+```
+
+## Drawing from the Prior Predictive Distribution
+
+```{r}
+source(file.path("..", "..", "Week05", "GLD_helpers.R")) # for GLD-related functions
+```
+
+We know that turnout rates in Western Europe tend to be high for important elections.
+I am less certain about the turnout rates in municipal elections, although it would
+be fine to look at _past_ data to inform your prior on the intercept
+```{r}
+with(Eggers, summary(to.2001[PSDC99 >= 1750 & PSDC99 <= 5250]))
+```
+Since turnout is expressed as a percentage of eligible voters, it is bounded between 
+$0$ and $100$, which must be the extreme quantiles, It is certainly fine to make the 
+median be $50$ or so. If the inter-quartile range were also $50$, then the lower quantile 
+would be $25$ and the upper quantile would be $75$ and imply a uniform distribution between 
+$0$ and $100$. Many researchers would opt for that on the grounds that it is "uninformative", 
+but we have plenty of information to suggest that values close to $0$ and close to $100$ are 
+much less likely than interior values.
+
+For $\tau$, the available theory in political science would suggest that it is
+positive. However, journal reviewers / editors will often not allow you to have
+a prior that is centered on a positive value. But if your prior median is zero,
+then rarely will journal reviewers / editors care much about what other prior
+quantiles you use, which illustrates that they do not really care about you
+being "objective" --- in Fisher's sense of not allowing your personal beliefs about
+$\tau$ to influence the analysis --- but rather want you to be "neutral" --- in
+the sense that a positive effect is as likely as a negative effect under the prior.
+Ruling out huge effects in either direction by utilizing a smallish prior 
+inter-quartile range is seen as prudent rather than non-neutral, although it is
+just as "subjective" as the prior median in Fisher's eyes. I am very sure
+the effect of PR is less than $3$ percentage points, but I could give a ten
+percent chance that it is greater than that.
+
+For $\beta_1$, which is the sensitivity to log-population in plurality-rule
+systems, I go with something weakly informative and centered on zero. $\beta_2$
+is the change in this sensitivity among PR systems, which again could be either
+positive or negative but I doubt it is that much. Since it seems that there are
+many other factors that should influence turnout in municipal elections besides 
+those that are included in this model, the errors should have a fairly large
+magnitude, although we know that the standard deviation, $\left(\sigma\right)$, 
+must be positive, so we can set its lower bound to zero without an explicit
+upper bound. All together, the values of asymmetry and steepness implied by
+my prior quantiles can be numerically solved for by calling
+
+```{r, warning = FALSE}
+a_s <- list(beta_0 = GLD_solver_bounded(bounds = c(0, 100), median = 50, IQR = 30),
+            tau  = GLD_solver_LBFGS(lower_quartile = -1, median = 0, upper_quartile = 2.5,
+                                    other_quantile = 3, alpha = 0.9),
+            beta_1 = GLD_solver(lower_quartile = -5, median = 0, upper_quartile = 5,
+                                other_quantile = 10, alpha = 0.9),
+            beta_2 = GLD_solver(lower_quartile = -0.5, median = 0, upper_quartile = 0.5,
+                                other_quantile = 1, alpha = 0.9),
+            sigma = GLD_solver_LBFGS(lower_quartile = 2.5, median = 5, upper_quartile = 9, 
+                                     other_quantile = 0, alpha = 0)
+)
+```
+
+From there, drawing from the prior predictive distribution of voter turnout is much like
+in the Hibbs example, except with more coefficients, and an interaction term.
+
+```{r, PPD, cache = TRUE}
+PR  <- Eggers$PR
+rrv <- Eggers$rrv
+vote_ <- t(replicate(1000, {
+  beta_0_ <- qgld(runif(1), median = 50, IQR = 30,
+                  asymmetry = a_s$beta_0[1], steepness = a_s$beta_0[2])
+  tau_ <- qgld(runif(1), median = 0, IQR = 3.5,
+               asymmetry = a_s$tau[1], steepness = a_s$tau[2])
+  beta_1_ <- qgld(runif(1), median = 0, IQR = 10,
+                  asymmetry = a_s$beta_1[1], steepness = a_s$beta_1[2])
+  beta_2_ <- qgld(runif(1), median = 0, IQR = 1,
+                  asymmetry = a_s$beta_2[1], steepness = a_s$beta_2[2])
+  mu_ <- beta_0_ + tau_ * PR + beta_1_  * ifelse(PR == 0, rrv, 0) +
+                    (beta_2_ + beta_1_) * ifelse(PR == 1, rrv, 0)
+  sigma_ <- qgld(runif(1), median = 5, IQR = 6.5,
+                 asymmetry = a_s$sigma[1], steepness = a_s$sigma[2])
+  epsilon_ <- rnorm(n = length(mu_), mean = 0, sd = sigma_)
+  y_ <- mu_ + epsilon_
+  y_
+}))
+colnames(vote_) <- Eggers$com.name
+```
+
+## Checking the Prior Predictive Distribution
+
+If we focus on the prior predictive distribution for municipalities
+near the $3,500$ threshold where they are required to switch their
+system from plurality-rule to PR, the turnout quantiles seem mostly reasonable
+```{r}
+quantile(c(vote_[ , Eggers$PSDC99 >= 1750 & Eggers$PSDC99 <= 5250]), 
+         probs = c(.01, .1, .25, .5, .75, .9, .99))
+```
+The priors are placing a little bit of probability on impossible
+values that are negative or greater than $100$, but almost $99$
+percent of them are interior and there is about an $80$ percent
+change that turnout is between $20$ and $80$ percent under the prior.
+
+In contrast, for Tolouse, which is the largest municipality, the
+proportion of draws from the prior predictive distribution that are
+inadmissible is much larger
+```{r}
+quantile(vote_[ , "Toulouse"], probs = c(.01, .1, .25, .5, .75, .9, .99))
+```
+This difference is attributable to the fact that the model assumes
+that the effect of log-population is linear across the entire
+range of its values. When the realizations of the coefficients from the
+prior are large in magnitude and they get multiplied by a large
+log-population value, then the predicted turnout is extreme. For a
+sufficiently large log-population, then the predictions can be
+negative or greater than $100$. By selecting a bandwidth around
+the threshold of $3,500$, you can avoid the assumption that the
+effect of log-population is linear over all possible log-populations
+and instead assume that the effect of log-population is (approximately)
+linear within the bandwidth.
+
+## Posterior Distribution
+
+```{r, post_RDD, results="hide", cache = TRUE}
+post_RDD <- stan_glm(to.2008 ~ rrv * PR, data = Eggers, family = gaussian,
+                     subset = PSDC99 >= 1750 & PSDC99 <= 5250,
+                     prior_intercept = normal(location = 50, scale = 20),
+                     prior = normal(location = 0, scale = c(3.5, 10, 1)),
+                     prior_aux = exponential(rate = 1 / 5), seed = 20210316)
+```
+
+## Interpretation
+
+We can make a histogram of the estimated treatment effect of switching to a
+PR system, which indicates that our beliefs are roughly normal with a center
+of one and a standard deviation of one-half so that almost all of the posterior
+draws are between zero and two. 
+
+```{r, message = FALSE}
+plot(post_RDD, plotfun = "hist", pars = "PR")
+```
+
+Specifically, we can calculate the posterior probability that switching to 
+PR has a positive effect on turnout with
+```{r}
+mean(as.data.frame(post_RDD)$PR > 0)
+```
+but do not confuse its complement with a Frequentist $p$-value, which is
+the probability of obtaining a point estimate that from another randomly-sampled
+dataset of size $N$ from the same population that is greater in magnitude
+than the one estimate that you have from the one dataset of size $N$ that you
+actually sampled, all conditional on the true treatment effect being zero
+(in which case, collecting data would be a waste of time).
+
+## Prediction
+
+We do not know the true values of turnout for the municipalities where they
+are missing, but we can obtain predictions of them that are now conditional
+on thousands of other observations. 
+```{r}
+Eggers_missing <- dplyr::filter(Eggers, PSDC99 >= 1750, PSDC99 <= 5250, is.na(to.2008))
+Eggers_missing$to.2008 <- NULL
+PPD <- posterior_predict(post_RDD, newdata = Eggers_missing)
+bayesplot::ppc_ribbon(y = rep(50, ncol(PPD)), yrep = PPD, x = Eggers_missing$rrv) +
+    ggplot2::ylim(50, 100) + ggplot2::xlab("rrv") + ggplot2::ylab("Predicted Turnout") +
+    ggplot2::theme(legend.position = "none")
+```
+
+They all look quite plausible now that we have much more precise posterior beliefs 
+about the parameters than we had in our priors.
