@@ -112,7 +112,7 @@ $$\forall k: \beta_k \thicksim ??? \\
   \forall n: \eta_n \equiv \sum_{k = 1}^K \beta_k x_{nk} \\
   \forall n: \epsilon_n \thicksim \mathcal{N}\left(0,1\right) \\
   \forall n: y_n^\ast \equiv \eta_n + \epsilon_n \\
-  \zeta_j \equiv -\infty \\
+  \zeta_1 \equiv -\infty \\
   \forall j > 1: \zeta_j \thicksim ??? \\
   y_n \equiv \sum_{j = 1}^{J - 1} \mathbb{I}\{y_n^\ast > \zeta_j\}$$
 
@@ -202,7 +202,7 @@ loo(post)
 $$\begin{eqnarray*}
 f\left(\left.\boldsymbol{\theta}\right|\boldsymbol{a}\right) & = & \frac{1}{B\left(\boldsymbol{a}\right)}\prod_{j=1}^{J}\theta_{j}^{a_{j}-1}
 \end{eqnarray*}$$
-where $\alpha_{j}\geq 0\,\forall j$ and the multivariate Beta
+where $a_{j}\geq 0\,\forall j$ and the multivariate Beta
 function is $B\left(\boldsymbol{a}\right)=\frac{\prod_{j=1}^{J}\Gamma\left(a_{j}\right)}{\Gamma\left(\prod_{k=1}^{K}a_{j}\right)}$
 where $\Gamma\left(z\right)=\int_{0}^{\infty}u^{z-1}e^{-u}du$ is
 the Gamma function, which is implemented in R as `gamma`
@@ -222,7 +222,7 @@ $$\alpha \thicksim ??? \\
   \forall n: \mu_n \equiv \alpha + \sum_{k = 1}^K \beta_k x_{nk} + \gamma \sum_{j = 1}^{c_n - 1} \theta_j \\
   \sigma \thicksim ??? \\
   \forall n: \epsilon_n \thicksim \mathcal{N}\left(0,\sigma\right) \\
-  \forall n: y \equiv \mu_n + \epsilon_n$$
+  \forall n: y_n \equiv \mu_n + \epsilon_n$$
 
 * Each $c_n$ is a KNOWN category, such as in "Is your family income between \$0 and \$20,000, 
 \$20,000 and \$50,000, \$50,000 and \$100,000, \$100,000 and \$200,000, or more than \$200,000?"
@@ -276,7 +276,7 @@ plot(conditional_effects(post, effects = "Income")) # forced monotonic but maybe
 * $c_n$ is the category for the $n$-th observation;
   $N_j$ is the number of observations in group $j$
 $$\forall k: \gamma_k \thicksim ??? \\
-  \forall n: \mu_n = e^{\gamma_{c_n}} \\
+  \forall n: \mu_n = 1 / \left(1 + e^{-\gamma_{c_n}}\right) \\
   \phi \thicksim ??? \\
   \forall n: \alpha_n \equiv \mu_n \phi \\
   \forall n: \beta_n \equiv \left(1 - \mu_n\right) \phi \\
