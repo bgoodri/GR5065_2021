@@ -1,0 +1,288 @@
+---
+title: "GR5065 Homework 6 Answer Key"
+date: "Due April 13, 2021 at 8PM New York Time"
+author: "Ben Goodrich"
+output: 
+  pdf_document: 
+    latex_engine: xelatex
+    number_sections: yes
+urlcolor: blue
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, setup}
+set.seed(20210413)
+options(mc.cores = parallel::detectCores(), width = 90)
+```
+
+# Household Pulse Survey
+
+```{r, message = FALSE}
+unzip("HPS_Week25_PUF_CSV.zip")
+library(readr)
+pulse <- read_csv("pulse2021_puf_25.csv")
+```
+
+After loading the data, we deal with some factor variables
+```{r}
+pulse$FEMALE <- as.integer(pulse$EGENDER == 2)
+pulse$RRACE  <- factor(pulse$RRACE, levels = 1:4, labels = c("White", "Black", "Asian", "Other"))
+pulse$EST_ST <- as.factor(pulse$EST_ST)
+pulse$EST_MSA <- as.factor(pulse$EST_MSA)
+pulse$EEDUC <- factor(pulse$EEDUC, levels = 1:7, 
+                      labels = c("Less than HS", "Some HS", "HS", "Some college", 
+                                 "Associates", "Bachelors", "Graduate"), ordered = TRUE)
+pulse$WRKLOSS <- ifelse(pulse$WRKLOSS == -99, NA_integer_, pulse$WRKLOSS == 1)
+```
+
+## Posterior Distribution
+
+In addition to education, we include the number of adults who live in the household, since the
+outcome variable asks "has anyone in your household experienced a loss of employment income",
+which should be monotonically related to the number of people in the household (that work).
+In addition to sex and race categories, we include a spline for the year in which the person
+is born since there are plenty of reasons why the pandemic could affect people of different
+ages differently, but we have absolutely no reason to believe age is linearly related to the
+log-odds. Finally, in stratified random sampling designs, you almost always want to adjust
+for the strata, which is particularly true in this case because some areas were more severely
+affected by the pandemic than others and some places had more strict restrictions on businesses
+and movement.
+```{r, message = FALSE, warning = FALSE}
+library(brms)
+get_prior(WRKLOSS ~ mo(EEDUC) + mo(THHLD_NUMADLT) + 
+            FEMALE + RRACE + s(TBIRTH_YEAR) + EST_ST + EST_MSA, 
+          data = pulse, family = bernoulli, subset = WRKLOSS > 0)
+```
+We go with fairly informative priors on the effect of education and number of adults in the
+household and neutral priors on all the other coefficients. The location of the prior on
+the intercept was chosen to place about a `r round(plogis(-0.7), digits = 2)` probability of
+an "average" person experiencing an employment income loss. Finally, we put a unit-exponential
+prior on the standard deviation of the (normally distributed) coefficients in the spline term.
+```{r}
+my_prior <- prior(normal(0, 0.5), class = "b") + 
+            prior(normal(-0.25, 0.1), class = "b", coef = "moEEDUC") +
+            prior(normal(0.5, 0.2), class = "b", coef = "moTHHLD_NUMADLT") +
+            prior(logistic(-0.7, 0.25), class = "Intercept") +
+            prior(exponential(1), class = "sds")
+```
+We can check that these priors on the parameters are reasonable by verifying whether the
+implied prior probability of employment income loss is reasonable. First, we draw from the
+prior distribution of the parameters
+```{r, pulse_prior, cache = TRUE, message = FALSE, results = "hide", warning = FALSE}
+prior_draws <- brm(WRKLOSS ~ mo(EEDUC) + mo(THHLD_NUMADLT) +
+                    FEMALE + RRACE + s(TBIRTH_YEAR) + EST_ST + EST_MSA,
+                   data = pulse, family = bernoulli, prior = my_prior, sample_prior = "only")
+```
+and then plot the prior probability of loss of employment income
+```{r}
+hist(c(posterior_epred(prior_draws)), prob = TRUE, main = "", las = 1, xlab = "Prior Pr(WRKLOSS)")
+```
+
+As can be seen, most people had little probability of losing their job under the model but 
+the right tail is somewhat heavy so that some people are almost guaranteed to lose their job.
+
+Since that seems plausible in the aggregate, we go ahead and condition on the observed outcomes 
+to obtain posterior draws of the parameters.
+```{r, pulse, cache = TRUE, results = "hide", message = FALSE, warning = FALSE}
+post <- brm(WRKLOSS ~ mo(EEDUC) + mo(THHLD_NUMADLT) + 
+              FEMALE + RRACE + s(TBIRTH_YEAR) + EST_ST + EST_MSA, 
+            data = pulse, family = bernoulli, prior = my_prior)
+```
+
+```{r}
+post
+```
+
+## Interpretation
+
+The effect of education is restricted to be monotonic and it has a very good chance of
+being decreasing under our prior on `moEEDUC`. In the posterior distribution, the
+relationship remains decreasing
+```{r}
+plot(conditional_effects(post, effect = "EEDUC"))
+```
+
+and we become a lot more certain about the magnitude of the dropoff in the probability
+of a loss in employment income. It is fairly steep for people with graduate or bachelor's
+degrees compared to lesser levels of education.
+
+## Frequentism
+
+After loading the data.frame of household weights
+```{r, message = FALSE}
+pulse_weights <- read_csv("pulse2021_repwgt_puf_25.csv")[ , 3:82]
+```
+we can estimate a fairly comparable model using maximum likelihood and then re-estimate
+the effect of having a graduate degree with 80 different sets of weights
+```{r, frequentism, cache = TRUE, message = FALSE, results = "hide"}
+MLE <- mgcv::gam(WRKLOSS ~ EEDUC + as.factor(THHLD_NUMADLT) +
+                  FEMALE + RRACE + s(TBIRTH_YEAR) + EST_ST + EST_MSA, 
+                 data = pulse, family = binomial, weights = HWEIGHT / sum(HWEIGHT))
+EEDUCGraduate <- sapply(pulse_weights, FUN = function(w) {
+  coef(update(MLE, weights = w / sum(w)))["EEDUCGraduate"]
+})
+```
+Having 80 different sets of random weights is (somewhat) like having 80 different
+datasets of size $N$, which allows us to accomplish the primary goal of Frequentist
+inference, which is to describe using probability distributions how much an estimator 
+varies across datasets of size $N$ that are induced by the stratified random sampling 
+design. We can plot that distribution as
+```{r}
+hist(EEDUCGraduate, prob = TRUE, main = "", las = 1, xlab = "Estimate")
+theta <- coef(MLE)["EEDUCGraduate"]
+abline(v = theta, col = 2, lty = 2)
+```
+
+which would look more normal if we had more than 80 sets of weights. These coefficients
+are roughly centered at the one estimate (red dashed line) we obtained using the original 
+weights, and we can apply the formula to estimate the standard deviation of the estimator:
+```{r}
+sqrt(4 * mean( (EEDUCGraduate - theta) ^ 2 ))
+```
+This number is about twice as large as the posterior standard deviation,
+```{r}
+sd(as.data.frame(post)$bsp_moEEDUC * 6)
+```
+The fact that both numbers are small relative to the magnitude of the effect of having
+a graduate degree would lead a lot of people to the unwarranted conclusion that it does
+not matter whether you used a Bayesian or Frequentist estimator. However, in order to
+decide what policies to implement as a result of the pandemic, it is completely 
+insufficient to reject the (preposterous) null hypothesis that education has no 
+effect in favor of the (vacuous) alternative hypothesis that it has a negative effect;
+you have to have a good estimate of the magnitude of the negative effect of education and
+your uncertainty about that effect in order to come up with a good estimate of how many
+people at each education level lost their jobs.
+
+Even if the numbers were considered similar, they represent different concepts. The
+Frequentist formula estimates the standard deviation of point estimates across datasets and
+the Bayesian calculation is of the standard deviation of MCMC draws conditional on the
+one dataset that was most recently collected. It is far from intuitive why those numbers
+should ever be similar, although under some conditions as $N \uparrow \infty$
+the distribution of the posterior mode _across datasets_ is the same as the distribution
+of the maximum likelihood estimator (because the prior becomes negligible). For finite
+$N$ --- even a fairly large $N$ of $`r nobs(post)`$ in this case --- the posterior standard
+deviation should typically be less than a Frequentist standard error if the priors were
+proper.
+
+The fact that most people analyzing these data would call `glm` without specifying
+`weights` or if they did, would not utilize the 80 random variations on the household
+weights to estimate the standard error strongly suggests that most people do not really
+care about the variation in the point estimator across datasets, or else did not learn
+how to perform Frequentist estimation beyond the simplest case of simple random sampling
+from an infinite population, which is what is assumed by `glm` and similar software.
+But no one does simple random sampling because it is too cost-inefficient compared to
+alternatives like stratified random sampling, cluster random sampling, etc. So, even if
+there is some form of random sampling --- which there was in this case but often is absent
+in the social sciences --- and some potential to repeat the random sampling process ---
+which there was in this case but usually is absent in the social sciences --- the estimated
+standard errors (and thus of functions of the estimated standard errors like $p$-values and
+confidence intervals) do not even correctly reflect the standard deviation in the point
+estimates across datasets of size $N$ that are induced by the randomization in the sampling
+process. Moreover, although you can randomize who is _contacted_ for a survey, who among
+those contacted actually agrees to provide responses to the survey is not that random,
+which is not accounted for by `glm`.
+
+# General Social Survey
+
+Here I am going to model a question about support for gay marriage that was first
+asked in 1988, next asked in 2004, and then asked every two years thereafter. As
+usual, we have to deal with several factor variables.
+```{r}
+data(gss_all, package = "gssr")
+gss_all <- gss_all[gss_all$year == 1988 | gss_all$year >= 2004, ]
+gss_all$year_born <- as.integer(gss_all$year) - gss_all$age
+gss_all$year <- as.ordered(gss_all$year)
+gss_all$female <- as.integer(gss_all$sex == 2)
+gss_all$relig16 <- haven::as_factor(gss_all$relig16)
+gss_all$y <- haven::as_factor(gss_all$marhomo, ordered = TRUE)
+```
+
+All of these are fairly self-explanatory except for `relig16`, which is the
+religion the respondent was raised in, as opposed to the religion that they
+identify with today. There is a large literature on "age-period-cohort" models
+(spoiler: you should estimate them with Bayesian methods because it is impossible
+to separately identify the three effects using the data alone) but here we
+are going to eliminate age and just try to distinguish between the period of the
+survey and the cohort to which the respondent was born.
+
+## Prior Predictive Distribution
+
+It seems plausible that opposition to gay marriage should monotonically
+decrease over time but implausible that the year in which the respondent
+was born would have a linear effect on anything. It is well-established
+from every other survey that women are more supportive of gay marriage than
+are men, although we could go with a neutral prior on that. Similarly,
+it is well-known that some religions are more supportive of gay marriage than
+are others, but there are a lot of religions that I am not that familiar
+with so I will go with a neutral prior on all of them.
+```{r, message = FALSE, warning = FALSE}
+get_prior(y ~ mo(year) + female + s(year_born) + relig16, 
+          data = gss_all, family = cumulative)
+my_prior <- prior(normal(0, 0.5), class = "b") + 
+            prior(normal(-0.5, 0.2), class = "b", coef = "moyear") +
+            prior(normal(-3.5, 1), class = "Intercept", coef = "1") + 
+            prior(normal(-2.5, 1), class = "Intercept", coef = "2") +
+            prior(normal(-1.5, 1), class = "Intercept", coef = "3") +
+            prior(normal(-0.5, 1), class = "Intercept", coef = "4") +
+            prior(exponential(1), class = "sds")
+```
+
+The hyperparameters to the normal prior on the "Intercepts" (really cutpoints)
+have been tweaked so that they induce a seemingly reasonable prior predictive
+distribution of responses. We can verify that by drawing from the prior distribution
+of all of the parameters,
+```{r, gss_prior, cache = TRUE, message = FALSE, results = "hide", warning = FALSE}
+prior_draws <- brm(y ~ mo(year) + female + s(year_born) + relig16,
+                   data = gss_all, family = cumulative, prior = my_prior, sample_prior = "only")
+```
+and calculating the proportion of draws of the predictive distribution that fall in
+each of the five categories of the Likert scale for the outcome (from strongly agree
+to strongly oppose).
+```{r, PPD, cache = TRUE}
+round(prop.table(table(c(posterior_predict(prior_draws)))), digits = 2)
+```
+As can be seen, the proportions are fairly uniform but I left a little bit of extra
+probability on the extreme categories to reflect that fact that gay marriage has
+historically been a contentious issue in the United States.
+
+## Posterior Distribution
+
+We can then condition on the observed data to draw from the posterior distribution
+of the parameters.
+```{r, gss, cache = TRUE, message = FALSE, results = "hide", warning = FALSE}
+post <- brm(y ~ mo(year) + female + s(year_born) + relig16,
+            data = gss_all, family = cumulative, prior = my_prior)
+```
+
+As can be seen, there is a fairly substantial and consistent period effect, where
+net of all the other predictors, strong opposition (5) to gay marriage to gay marriage
+dissipates over time and is mostly replaced by support (2) or strong support (1).
+```{r}
+plot(conditional_effects(post, effect = "year", categorical = TRUE))
+```
+
+This "period" effect seems to reflect many people changing their minds --- as opposed to
+older survey respondents dying and being replaced by younger survey respondents ---
+because the spline already captures that (nonlinear, strong, precise) "cohort" effect:
+```{r}
+plot(conditional_effects(post, effect = "year_born", categorical = TRUE))
+```
+
+## Addendum
+
+One question that always arises with Likert scale variables is whether distinguishing
+among the intermediate categories is worthwhile. Bayesians can investigate sych questions
+by drawing from the posterior distribution of an ordinal model and dichotomizing
+the outcome after-the-fact (often at the purportedly neutral category) to calculate
+a log-likelihood over the parameters evaluated at the binary outcome of whether responents
+support or oppose gay marriage:
+```{r, elpd, cache = TRUE}
+eta <- posterior_linpred(post)
+mu  <- plogis(eta - as.data.frame(post)$`b_Intercept[2]`)
+ll  <- dbinom(as.integer(model.frame(post)$y) >= 3, size = 1, prob = mu, log = TRUE)
+loo::loo(ll, r_eff = loo::relative_eff(exp(ll), chain_id = rep(1:4, each = 1000)))
+```
+This estimated ELPD could then be compared to a logit model where the outcome has been
+dichotomized in advance to see which of the two models is better expected to predict
+support vs. opposition to gay marriage.
